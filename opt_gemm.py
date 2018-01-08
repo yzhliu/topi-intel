@@ -32,9 +32,9 @@ x, y, z = s[packedB].op.axis
 # s[packedB].reorder(y, x, z)
 s[packedB].vectorize(z)
 
-# CC = s.cache_write(C, 'local')
-AA = s.cache_read(A, 'local', [C])
-# BB = s.cache_read(packedB, 'local', [C])
+# CC = s.cache_write(C, 'global')
+AA = s.cache_read(A, 'global', [C])
+# BB = s.cache_read(packedB, 'global', [C])
 
 yo, xo, yi, xi = s[C].tile(C.op.axis[1], C.op.axis[0], bn, bn)
 ko, ki = s[C].split(k, factor=4)
@@ -81,3 +81,4 @@ now = time.time()
 answer = numpy.dot(_a, _b)
 print("Numpy: %f" % (time.time() - now))
 
+numpy.testing.assert_allclose(c.asnumpy(), answer, rtol=1e-5)
