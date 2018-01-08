@@ -34,7 +34,7 @@ s[packedB].vectorize(z)
 
 # CC = s.cache_write(C, 'local')
 AA = s.cache_read(A, 'local', [C])
-BB = s.cache_read(packedB, 'local', [C])
+# BB = s.cache_read(packedB, 'local', [C])
 
 yo, xo, yi, xi = s[C].tile(C.op.axis[1], C.op.axis[0], bn, bn)
 ko, ki = s[C].split(k, factor=4)
@@ -59,11 +59,11 @@ ao, ai = s[AA].op.axis
 s[AA].vectorize(ai)
 s[AA].unroll(ao)
 
-s[BB].compute_at(s[C], ko)
-print(s[BB].op.axis)
-_, bo, bi = s[BB].op.axis
-s[BB].vectorize(bi)
-s[BB].unroll(bo)
+# s[BB].compute_at(s[C], ko)
+# print(s[BB].op.axis)
+# _, bo, bi = s[BB].op.axis
+# s[BB].vectorize(bi)
+# s[BB].unroll(bo)
 
 s[C].parallel(yo)
 
@@ -77,7 +77,7 @@ print('Opt3: %f' % evaluator(a, b, c).mean)
 
 _a = a.asnumpy()
 _b = b.asnumpy()
-now = time.clock()
+now = time.time()
 answer = numpy.dot(_a, _b)
-print("Numpy: %f" % (time.clock() - now))
+print("Numpy: %f" % (time.time() - now))
 
