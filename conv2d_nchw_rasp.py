@@ -87,6 +87,12 @@ def _spatial_pack_data_only(wkl, sch, data):
     dpshape = (1, CI, TH, TW)
     dvshape = (1, TH//(VH*HSTR), TW//(VW*WSTR), CI, VH*HSTR+HCAT, VW*WSTR+WCAT)
 
+    print(dshape)
+    print(dpshape)
+    print(dvshape)
+    print(VH*HSTR)
+    print(VW*WSTR)
+
     DOPAD = (HPAD != 0 and WPAD != 0)
     if DOPAD:
         data_pad = pad(data, (0, 0, HPAD, WPAD), name="data_pad")
@@ -542,18 +548,31 @@ def verify_conv2d_nchw(batch, in_channel, in_size, num_filter, kernel, stride, p
         a = tvm.nd.array(a_np, ctx)
         w = tvm.nd.array(w_np, ctx)
 
+        print('--- schedule data packing ---')
+        A_vec, s = _spatial_pack_data_only(wkl, sch, A)
+        print(A_vec.shape)
+        a_vec_shape = get_const_tuple(A_vec.shape)
+        a_vec = tvm.nd.array(np.zeros(a_vec_shape, dtype=dtype), ctx)
+        print(tvm.lower(s, [A, A_vec], simple_mode=True))
+        func = tvm.build(s, [A, A_vec], device)
+        time_f = func.time_evaluator(func.entry_name, ctx, number=100)
+        cost = time_f(a, a_vec).mean
+        print('data -> data_vec: %g secs/op' % cost)
+
+        print(A.shape)
+        print(A_vec.shape)
         with tvm.build_config(auto_unroll_max_step=1400,
                               unroll_explicit=(device != "cuda")):
-            print('--- schedule data packing ---')
-            A_vec, s = _spatial_pack_data_only(wkl, sch, A)
-            print(A_vec.shape)
-            a_vec_shape = get_const_tuple(A_vec.shape)
-            a_vec = tvm.nd.array(np.zeros(a_vec_shape, dtype=dtype), ctx)
-            print(tvm.lower(s, [A, A_vec], simple_mode=True))
-            func = tvm.build(s, [A, A_vec], device)
-            time_f = func.time_evaluator(func.entry_name, ctx, number=100)
-            cost = time_f(a, a_vec).mean
-            print('data -> data_vec: %g secs/op' % cost)
+            # print('--- schedule data packing ---')
+            # A_vec, s = _spatial_pack_data_only(wkl, sch, A)
+            # print(A_vec.shape)
+            # a_vec_shape = get_const_tuple(A_vec.shape)
+            # a_vec = tvm.nd.array(np.zeros(a_vec_shape, dtype=dtype), ctx)
+            # print(tvm.lower(s, [A, A_vec], simple_mode=True))
+            # func = tvm.build(s, [A, A_vec], device)
+            # time_f = func.time_evaluator(func.entry_name, ctx, number=100)
+            # cost = time_f(a, a_vec).mean
+            # print('data -> data_vec: %g secs/op' % cost)
 
             print('--- schedule kernel packing ---')
             W_vec, s = _spatial_pack_kernel_only(wkl, sch, W)
@@ -572,7 +591,8 @@ def verify_conv2d_nchw(batch, in_channel, in_size, num_filter, kernel, stride, p
             B, s = _spatial_conv_only(wkl, sch, A_vec, W_vec, out_dtype=dtype)
             b = tvm.nd.array(np.zeros(get_const_tuple(B.shape), dtype=B.dtype), ctx)
             print(tvm.lower(s, [A_vec, W_vec, B], simple_mode=True))
-            func = tvm.build(s, [A_vec, W_vec, B], device)
+            func = tvm.build(s, [A_vec, W_vec, B], target=device)
+            func.save('conv_unpack.asm')
             time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
             cost = time_f(a_vec, w_vec, b).mean
             print('conv & unpack: %g secs/op' % cost)
@@ -641,6 +661,7 @@ def verify_conv2d_nchw_gemm(batch, in_channel, in_size, num_filter, kernel_size,
 
             b = tvm.nd.array(np.zeros(get_const_tuple(B.shape), dtype=B.dtype), ctx)
             func = tvm.build(s, [A, W, B], device)
+            func.save('conv.asm')
             time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
             cost = time_f(a, w, b).mean
             print('conv: %g secs/op' % cost)

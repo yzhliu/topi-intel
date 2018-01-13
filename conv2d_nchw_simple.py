@@ -41,7 +41,9 @@ def schedule_conv2d(outs):
             r = s[C].fuse(ry, rx)
             s[C].unroll(r)
 
+            w = s[C].fuse(h, w)
             xo, xi = s[C].split(w, factor=8)
+            xoo, xoi = s[C].split(xo, factor=7)
             s[C].parallel(c)
             s[C].vectorize(xi)
             s[C].pragma(n, "parallel_launch_point")
@@ -86,7 +88,14 @@ def verify_conv2d_nchw(batch, in_channel, in_size, num_filter, kernel, stride, p
                               unroll_explicit=(device != "cuda")):
             func = tvm.build(s, [A, W, B], device, name="conv2d_%d_%d_%d_%d_%d_%d_%d" % (batch, in_channel, in_size, num_filter, kernel, stride, padding))
 
-            time_f1 = func.time_evaluator(func.entry_name, ctx, number=400)
+            # from tvm.contrib import cc
+            # from tvm.contrib import util
+            # temp = util.tempdir()
+            # func.save(temp.relpath("conv_simple.o"))
+            # cc.create_shared(temp.relpath("conv_simple.so"), [temp.relpath("conv_simple.o")])
+            # func = tvm.module.load(temp.relpath("conv_simple.so"))
+
+            time_f1 = func.time_evaluator(func.entry_name, ctx, number=200)
             cost = time_f1(a, w, b).mean
             np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-5)
             print('%g secs/op' % cost)
@@ -96,7 +105,7 @@ def verify_conv2d_nchw(batch, in_channel, in_size, num_filter, kernel, stride, p
 
 def test_conv2d_nchw():
     verify_conv2d_nchw(1, 64, 56, 64, 3, 1, 1)
-    # ResNet18 worklaods
+    # ResNet18 workloads
     """
     verify_conv2d_nchw(1, 3, 224, 64, 7, 3, 2)
     verify_conv2d_nchw(1, 64, 56, 64, 3, 1, 1)
