@@ -87,12 +87,6 @@ def _spatial_pack_data_only(wkl, sch, data):
     dpshape = (1, CI, TH, TW)
     dvshape = (1, TH//(VH*HSTR), TW//(VW*WSTR), CI, VH*HSTR+HCAT, VW*WSTR+WCAT)
 
-    print(dshape)
-    print(dpshape)
-    print(dvshape)
-    print(VH*HSTR)
-    print(VW*WSTR)
-
     DOPAD = (HPAD != 0 and WPAD != 0)
     if DOPAD:
         data_pad = pad(data, (0, 0, HPAD, WPAD), name="data_pad")
@@ -103,20 +97,29 @@ def _spatial_pack_data_only(wkl, sch, data):
         data_pad[n][ci][h*VH*HSTR+vh][w*VW*WSTR+vw], name='data_vec')
 
     s = tvm.create_schedule(data_vec.op)
-    traverse(s, data_vec.op)
+    # traverse(s, data_vec.op)
 
     # schedule for data_vec
     A0, A1 = data_pad, data_vec
     if DOPAD:
         s[A0].compute_inline()
-    _, h, _, _, _, _ = s[A1].op.axis
-    if sch.ba == 1:
-        oaxis = h
-        paxis = h
-    else:
-        oh, ih = s[A1].split(h, sch.ba)
-        oaxis = oh
-        paxis = ih
+    n, h, w, ci, vh, vw = s[A1].op.axis
+    s[A1].fuse(vh, vw)
+    # wo, wi = s[A1].split(w, factor=16)
+    # s[A1].vectorize(wi)
+    # cio, cii = s[A1].split(ci, factor=8)
+    # s[A1].vectorize(cii)
+    # s[A1].reorder(n, h, w, ci, vh, vw)
+    # if sch.ba == 1:
+    #     oaxis = h
+    #     paxis = h
+    # else:
+    #     oh, ih = s[A1].split(h, sch.ba)
+    #     oaxis = oh
+    #     paxis = ih
+    oaxis = h
+    paxis = h
+    # s[A1].vectorize(h)
     s[A1].parallel(paxis)
     s[A1].pragma(oaxis, "parallel_launch_point")
     s[A1].pragma(paxis, "parallel_stride_pattern")
@@ -246,8 +249,7 @@ def _spatial_conv_only(wkl, sch, data_vec, kernel_vec, out_dtype):
     return C, s
 
 
-# TODO
-def _spatial_conv_unpack_only(wkl, sch, conv):
+def _spatial_conv_all(wkl, sch, data, kernel, out_dtype):
     H, W = wkl.height, wkl.width
     CI, CO = wkl.in_filter, wkl.out_filter
     KH, KW = wkl.hkernel, wkl.wkernel
@@ -265,52 +267,9 @@ def _spatial_conv_unpack_only(wkl, sch, conv):
     OH = (H + 2 * HPAD - KH) // HSTR + 1
     OW = (W + 2 * WPAD - KW) // WSTR + 1
 
-    ci = tvm.reduce_axis((0, CI), name='ci')
-    dh = tvm.reduce_axis((0, KH), name='dh')
-    dw = tvm.reduce_axis((0, KW), name='dw')
-
-    ovshape = (1, CO // VC, OH // VH, OW // VW, VH, VW, VC)
-    oshape = (1, CO, OH, OW)
-
-    output = tvm.compute(oshape, lambda n, co, h, w:
-    conv[n][co // VC][h / VH][w // VW][h % VH][w % VW][co % VC],
-                         name='output_unpack', tag='spatial_conv_output')
-
-    return output
-
-
-def _spatial_pack(data, kernel, stride, padding, out_dtype):
-    """ Compute convolution with pack on spatial axes. """
-    assert data.shape[0].value == 1, "spatial pack convolution only support batch size=1"
-    wkl = _get_workload(data, kernel, stride, padding, out_dtype)
-    sch = _schedule_conv2d(wkl)
-
-    H, W = wkl.height, wkl.width
-    CI, CO = wkl.in_filter, wkl.out_filter
-    KH, KW = wkl.hkernel, wkl.wkernel
-    HPAD, WPAD = wkl.hpad, wkl.wpad
-    HSTR, WSTR = wkl.hstride, wkl.wstride
-    HCAT, WCAT = KH-1, KW-1
-
-    VH = sch.vh
-    VW = sch.vw
-    VC = sch.vc
-    UNROLL = sch.unroll
-
-    TH = H + 2*HPAD
-    TW = W + 2*WPAD
-    OH = (H + 2*HPAD - KH) // HSTR + 1
-    OW = (W + 2*WPAD - KW) // WSTR + 1
-
     dshape = (1, CI, H, W)
     dpshape = (1, CI, TH, TW)
-    dvshape = (1, TH//(VH*HSTR), TW//(VW*WSTR), CI, VH*HSTR+HCAT, VW*WSTR+WCAT)
-
-    kshape = (CO, CI, KH, KW)
-    kvshape = (CO/VC, CI, KH, KW, VC)
-
-    ovshape = (1, CO // VC, OH // VH, OW // VW, VH, VW, VC)
-    oshape = (1, CO, OH, OW)
+    dvshape = (1, TH // (VH * HSTR), TW // (VW * WSTR), CI, VH * HSTR + HCAT, VW * WSTR + WCAT)
 
     DOPAD = (HPAD != 0 and WPAD != 0)
     if DOPAD:
@@ -319,25 +278,109 @@ def _spatial_pack(data, kernel, stride, padding, out_dtype):
         data_pad = data
 
     data_vec = tvm.compute(dvshape, lambda n, h, w, ci, vh, vw: \
-        data_pad[n][ci][h*VH*HSTR+vh][w*VW*WSTR+vw], name='data_vec')
+        data_pad[n][ci][h * VH * HSTR + vh][w * VW * WSTR + vw], name='data_vec')
+
+    kshape = (CO, CI, KH, KW)
+    kvshape = (CO // VC, CI, KH, KW, VC)
 
     kernel_vec = tvm.compute(kvshape, lambda co, ci, dh, dw, vc: \
-        kernel[co*VC+vc][ci][dh][dw], name='kernel_vec')
+        kernel[co * VC + vc][ci][dh][dw], name='kernel_vec')
 
     ci = tvm.reduce_axis((0, CI), name='ci')
     dh = tvm.reduce_axis((0, KH), name='dh')
     dw = tvm.reduce_axis((0, KW), name='dw')
 
+    ovshape = (1, CO // VC, OH // VH, OW // VW, VH, VW, VC)
+    oshape = (1, CO, OH, OW)
+
     conv = tvm.compute(ovshape, lambda n, co, h, w, vh, vw, vc: \
-        tvm.sum(data_vec[n, h, w, ci, vh*HSTR+dh, vw*WSTR+dw].astype(out_dtype) *
+        tvm.sum(data_vec[n, h, w, ci, vh * HSTR + dh, vw * WSTR + dw].astype(out_dtype) *
                 kernel_vec[co, ci, dh, dw, vc].astype(out_dtype),
                 axis=[ci, dh, dw]), name='conv')
-
     output = tvm.compute(oshape, lambda n, co, h, w:
-                         conv[n][co//VC][h/VH][w//VW][h%VH][w%VW][co%VC],
+    conv[n][co // VC][h // VH][w // VW][h % VH][w % VW][co % VC],
                          name='output_unpack', tag='spatial_conv_output')
 
-    return output
+    s = tvm.create_schedule(conv.op)
+    traverse(s, conv.op)
+
+    # schedule for data_vec
+    A0, A1 = data_pad, data_vec
+    if DOPAD:
+        s[A0].compute_inline()
+    _, h, _, _, _, _ = s[A1].op.axis
+    # if sch.ba == 1:
+    #     oaxis = h
+    #     paxis = h
+    # else:
+    #     oh, ih = s[A1].split(h, sch.ba)
+    #     oaxis = oh
+    #     paxis = ih
+    oaxis = h
+    paxis = h
+    s[A1].parallel(paxis)
+    s[A1].pragma(oaxis, "parallel_launch_point")
+    s[A1].pragma(paxis, "parallel_stride_pattern")
+    s[A1].pragma(oaxis, "parallel_barrier_when_finish")
+
+    # schedule for kernel_vec
+    B, B0 = kernel, kernel_vec
+    co, _, _, _, _ = s[B0].op.axis
+    if sch.bc == 1:
+        oaxis = co
+        paxis = co
+    else:
+        oco, ico = s[B0].split(co, sch.bc)
+        oaxis = oco
+        paxis = ico
+    s[B0].parallel(paxis)
+    s[B0].pragma(oaxis, "parallel_launch_point")
+    s[B0].pragma(paxis, "parallel_stride_pattern")
+    s[B0].pragma(oaxis, "parallel_barrier_when_finish")
+
+    # schedule for conv & unpack
+    C0, C = conv, output
+
+    s = tvm.create_schedule(C.op)
+    traverse(s, C.op)
+
+    CC = s.cache_write(C0, "global")
+    _, co, oh, ow, vh, vw, vc = s[C0].op.axis
+    if UNROLL:
+        s[C0].unroll(vw)
+    s[C0].vectorize(vc)
+
+    s[CC].compute_at(s[C0], ow)
+    _, co, oh, ow, vh, vw, vc = s[CC].op.axis
+    ci, dh, dw = s[CC].op.reduce_axis
+    s[CC].reorder(ci, dh, vh, dw, vw, vc)
+
+    if UNROLL:
+        s[CC].unroll(vw)
+    s[CC].vectorize(vc)
+
+    n, co, h, w = s[C].op.axis
+    co, vc = s[C].split(co, VC)
+    oh, ow, vh, vw = s[C].tile(h, w, VH, VW)
+    s[C].reorder(n, co, oh, ow, vh, vw, vc)
+    # if C != C1:
+    #     s[C1].compute_inline()
+    s[C0].compute_at(s[C], ow)
+
+    if sch.bc == 1:
+        oaxis = co
+        paxis = co
+    else:
+        oco, ico = s[C].split(co, sch.bc)
+        oaxis = oco
+        paxis = ico
+
+    s[C].parallel(paxis)
+    s[C].pragma(oaxis, "parallel_launch_point")
+    s[C].pragma(paxis, "parallel_stride_pattern")
+    s[C].pragma(oaxis, "parallel_barrier_when_finish")
+
+    return C, s
 
 
 def _im2col_pack(wkl, sch, data, kernel, stride, padding, out_dtype):
@@ -518,7 +561,7 @@ def _schedule_im2col_conv2d(wkl, sch, s, data, data_pad, data_col, data_vec,
     return s
 
 
-def verify_conv2d_nchw(batch, in_channel, in_size, num_filter, kernel, stride, padding):
+def verify_conv2d_nchw(batch, in_channel, in_size, num_filter, kernel, stride, padding, schedule=None):
     in_height = in_width = in_size
 
     def check_device():
@@ -526,7 +569,8 @@ def verify_conv2d_nchw(batch, in_channel, in_size, num_filter, kernel, stride, p
         W = tvm.placeholder((num_filter, in_channel, kernel, kernel), name='W')
 
         out_dtype = 'float32'
-        wkl, sch = _spatial_get_sch(A, W, stride, padding, out_dtype)
+        wkl, sch_default = _spatial_get_sch(A, W, stride, padding, out_dtype)
+        sch = sch_default if schedule is None else schedule
 
         a_shape = get_const_tuple(A.shape)
         w_shape = get_const_tuple(W.shape)
@@ -548,40 +592,27 @@ def verify_conv2d_nchw(batch, in_channel, in_size, num_filter, kernel, stride, p
         a = tvm.nd.array(a_np, ctx)
         w = tvm.nd.array(w_np, ctx)
 
-        print('--- schedule data packing ---')
-        A_vec, s = _spatial_pack_data_only(wkl, sch, A)
-        print(A_vec.shape)
-        a_vec_shape = get_const_tuple(A_vec.shape)
-        a_vec = tvm.nd.array(np.zeros(a_vec_shape, dtype=dtype), ctx)
-        print(tvm.lower(s, [A, A_vec], simple_mode=True))
-        func = tvm.build(s, [A, A_vec], device)
-        time_f = func.time_evaluator(func.entry_name, ctx, number=100)
-        cost = time_f(a, a_vec).mean
-        print('data -> data_vec: %g secs/op' % cost)
-
-        print(A.shape)
-        print(A_vec.shape)
         with tvm.build_config(auto_unroll_max_step=1400,
                               unroll_explicit=(device != "cuda")):
-            # print('--- schedule data packing ---')
-            # A_vec, s = _spatial_pack_data_only(wkl, sch, A)
-            # print(A_vec.shape)
-            # a_vec_shape = get_const_tuple(A_vec.shape)
-            # a_vec = tvm.nd.array(np.zeros(a_vec_shape, dtype=dtype), ctx)
-            # print(tvm.lower(s, [A, A_vec], simple_mode=True))
-            # func = tvm.build(s, [A, A_vec], device)
-            # time_f = func.time_evaluator(func.entry_name, ctx, number=100)
-            # cost = time_f(a, a_vec).mean
-            # print('data -> data_vec: %g secs/op' % cost)
+            print('--- schedule data packing ---')
+            A_vec, s = _spatial_pack_data_only(wkl, sch, A)
+            print(A_vec.shape)
+            a_vec_shape = get_const_tuple(A_vec.shape)
+            a_vec = tvm.nd.array(np.zeros(a_vec_shape, dtype=dtype), ctx)
+            print(tvm.lower(s, [A, A_vec], simple_mode=True))
+            func = tvm.build(s, [A, A_vec], device)
+            time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
+            cost = time_f(a, a_vec).mean
+            print('data -> data_vec: %g secs/op' % cost)
 
             print('--- schedule kernel packing ---')
             W_vec, s = _spatial_pack_kernel_only(wkl, sch, W)
             print(W_vec.shape)
             w_vec_shape = get_const_tuple(W_vec.shape)
             w_vec = tvm.nd.array(np.zeros(w_vec_shape, dtype=dtype), ctx)
-            print(tvm.lower(s, [W, W_vec], simple_mode=True))
+            # print(tvm.lower(s, [W, W_vec], simple_mode=True))
             func = tvm.build(s, [W, W_vec], device)
-            time_f = func.time_evaluator(func.entry_name, ctx, number=100)
+            time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
             cost = time_f(w, w_vec).mean
             print('kernel -> kernel_vec: %g secs/op' % cost)
 
@@ -590,12 +621,58 @@ def verify_conv2d_nchw(batch, in_channel, in_size, num_filter, kernel, stride, p
             W_vec = tvm.placeholder(w_vec_shape, name='W_vec')
             B, s = _spatial_conv_only(wkl, sch, A_vec, W_vec, out_dtype=dtype)
             b = tvm.nd.array(np.zeros(get_const_tuple(B.shape), dtype=B.dtype), ctx)
-            print(tvm.lower(s, [A_vec, W_vec, B], simple_mode=True))
+            # print(tvm.lower(s, [A_vec, W_vec, B], simple_mode=True))
             func = tvm.build(s, [A_vec, W_vec, B], target=device)
             func.save('conv_unpack.asm')
             time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
             cost = time_f(a_vec, w_vec, b).mean
             print('conv & unpack: %g secs/op' % cost)
+
+            np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-5)
+            print(b_np.shape)
+
+    check_device()
+
+
+def verify_conv2d_nchw_all(batch, in_channel, in_size, num_filter, kernel, stride, padding, schedule=None):
+    in_height = in_width = in_size
+
+    def check_device():
+        A = tvm.placeholder((batch, in_channel, in_height, in_width), name='A')
+        W = tvm.placeholder((num_filter, in_channel, kernel, kernel), name='W')
+
+        out_dtype = 'float32'
+        wkl, sch_default = _spatial_get_sch(A, W, stride, padding, out_dtype)
+        sch = sch_default if schedule is None else schedule
+
+        a_shape = get_const_tuple(A.shape)
+        w_shape = get_const_tuple(W.shape)
+
+        dtype = A.dtype
+
+        @memoize("topi.tests.test_topi_conv2d.verify_con2d_nchw")
+        def get_ref_data():
+            a_np = np.random.uniform(size=a_shape).astype(dtype)
+            w_np = np.random.uniform(size=w_shape).astype(dtype)
+            b_np = topi.testing.conv2d_nchw_python(a_np, w_np, stride, padding)
+            c_np = np.maximum(b_np, 0)
+            return a_np, w_np, b_np, c_np
+
+        a_np, w_np, b_np, _ = get_ref_data()
+        device = 'llvm -mcpu=skylake-avx512'
+        ctx = tvm.context(device, 0)
+        a = tvm.nd.array(a_np, ctx)
+        w = tvm.nd.array(w_np, ctx)
+
+        with tvm.build_config(auto_unroll_max_step=1400,
+                              unroll_explicit=(device != "cuda")):
+            B, s = _spatial_conv_all(wkl, sch, A, W, out_dtype=dtype)
+            b = tvm.nd.array(np.zeros(get_const_tuple(B.shape), dtype=B.dtype), ctx)
+            # print(tvm.lower(s, [A_vec, W_vec, B], simple_mode=True))
+            func = tvm.build(s, [A, W, B], target=device)
+            time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
+            cost = time_f(a, w, b).mean
+            print('conv all: %g secs/op' % cost)
 
             np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-5)
             print(b_np.shape)
@@ -661,7 +738,6 @@ def verify_conv2d_nchw_gemm(batch, in_channel, in_size, num_filter, kernel_size,
 
             b = tvm.nd.array(np.zeros(get_const_tuple(B.shape), dtype=B.dtype), ctx)
             func = tvm.build(s, [A, W, B], device)
-            func.save('conv.asm')
             time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
             cost = time_f(a, w, b).mean
             print('conv: %g secs/op' % cost)
@@ -673,7 +749,13 @@ def verify_conv2d_nchw_gemm(batch, in_channel, in_size, num_filter, kernel_size,
 
 
 def test_conv2d_nchw():
-    verify_conv2d_nchw(1, 64, 56, 64, 3, 1, 1)
+    schedules = [
+        SpatialPack(vh=7, vw=1, vc=16, ba=64, bc=4, unroll=True),
+        SpatialPack(vh=7, vw=1, vc=16, ba=64, bc=1, unroll=True),
+        SpatialPack(vh=7, vw=7, vc=16, ba=16, bc=64, unroll=False)
+    ]
+    # verify_conv2d_nchw_all(1, 64, 56, 64, 3, 1, 1, schedules[0])
+    verify_conv2d_nchw(1, 64, 56, 64, 3, 1, 1, schedules[0])
     # verify_conv2d_nchw_gemm(1, 64, 56, 64, 3, 1, 1)
     # ResNet18 worklaods
     """
