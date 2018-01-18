@@ -9,6 +9,9 @@ from topi.nn.util import infer_pad, infer_stride
 from topi import tag
 from topi.nn import pad
 
+device = 'llvm -mcpu=skylake-avx512'
+# device = 'llvm -mcpu=core-avx2'
+
 def _spatial_get_sch(data, kernel, stride, padding, out_dtype):
     assert data.shape[0].value == 1, "spatial pack convolution only support batch size=1"
     return _get_workload(data, kernel, stride, padding, out_dtype)
@@ -535,9 +538,6 @@ def verify_conv2d_nchw(batch, in_channel, in_size, num_filter, kernel, stride, p
             return a_np, w_np, b_np, c_np
 
         a_np, w_np, b_np, c_np = get_ref_data()
-        # device = 'llvm'
-        device = 'llvm -mcpu=skylake-avx512'
-        # device = 'llvm -mcpu=core-avx2'
         ctx = tvm.context(device, 0)
         a = tvm.nd.array(a_np, ctx)
         w = tvm.nd.array(w_np, ctx)
@@ -568,7 +568,6 @@ def verify_conv2d_nchw(batch, in_channel, in_size, num_filter, kernel, stride, p
             B, s = _spatial_conv_only(wkl, sch, A_vec, W_vec, out_dtype=dtype)
             b = tvm.nd.array(np.zeros(get_const_tuple(B.shape), dtype=B.dtype), ctx)
             func = tvm.build(s, [A_vec, W_vec, B], target=device)
-            func.save('conv_unpack.asm')
             time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
             cost_conv = time_f(a_vec, w_vec, b).mean
             print('conv & unpack: %g secs/op' % cost_conv)
@@ -603,8 +602,6 @@ def verify_conv2d_nchw_all(batch, in_channel, in_size, num_filter, kernel, strid
             return a_np, w_np, b_np, c_np
 
         a_np, w_np, b_np, _ = get_ref_data()
-        device = 'llvm -mcpu=skylake-avx512'
-        # device = 'llvm -mcpu=core-avx2'
         ctx = tvm.context(device, 0)
         a = tvm.nd.array(a_np, ctx)
         w = tvm.nd.array(w_np, ctx)
@@ -617,72 +614,6 @@ def verify_conv2d_nchw_all(batch, in_channel, in_size, num_filter, kernel, strid
             time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
             cost = time_f(a, w, b).mean
             print('conv all: %g secs/op' % cost)
-
-            np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-5)
-
-    check_device()
-
-
-def verify_conv2d_nchw_gemm(batch, in_channel, in_size, num_filter, kernel_size, stride, padding):
-    in_height = in_width = in_size
-
-    def check_device():
-        A = tvm.placeholder((batch, in_channel, in_height, in_width), name='A')
-        W = tvm.placeholder((num_filter, in_channel, kernel_size, kernel_size), name='W')
-
-        out_dtype = 'float32'
-        wkl = _get_workload(A, W, stride, padding, out_dtype)
-        sch = Im2ColPack(7, 8, 1, 8, True)
-
-        a_shape = get_const_tuple(A.shape)
-        w_shape = get_const_tuple(W.shape)
-
-        dtype = A.dtype
-
-        @memoize("topi.tests.test_topi_conv2d.verify_con2d_nchw")
-        def get_ref_data():
-            a_np = np.random.uniform(size=a_shape).astype(dtype)
-            w_np = np.random.uniform(size=w_shape).astype(dtype)
-            b_np = topi.testing.conv2d_nchw_python(a_np, w_np, stride, padding)
-            c_np = np.maximum(b_np, 0)
-            return a_np, w_np, b_np, c_np
-
-        a_np, w_np, b_np, c_np = get_ref_data()
-        device = 'llvm -mcpu=skylake-avx512'
-        ctx = tvm.context(device, 0)
-        a = tvm.nd.array(a_np, ctx)
-        w = tvm.nd.array(w_np, ctx)
-
-        with tvm.build_config(auto_unroll_max_step=1400,
-                              unroll_explicit=(device != "cuda")):
-
-            B = _im2col_pack(wkl, sch, A, W, stride, padding, out_dtype)
-            s = tvm.create_schedule(B.op)
-            traverse(s, B.op)
-
-            op = B.op
-            output = op.output(0)
-            conv_out = op.input_tensors[0]
-            kernel_vec = conv_out.op.input_tensors[1]
-            kernel = kernel_vec.op.input_tensors[0]
-            data_vec = conv_out.op.input_tensors[0]
-            data_col = data_vec.op.input_tensors[0]
-            data = data_col.op.input_tensors[0]
-            data_pad = None
-            if isinstance(data.op, tvm.tensor.ComputeOp) and "pad" in data.op.tag:
-                data_pad = data
-                data = data_pad.op.input_tensors[0]
-            _schedule_im2col_conv2d(wkl, sch, s, data, data_pad, data_col, data_vec,
-                                    kernel, kernel_vec,
-                                    conv_out, output, B)
-
-            print(tvm.lower(s, [A, W, B], simple_mode=True))
-
-            b = tvm.nd.array(np.zeros(get_const_tuple(B.shape), dtype=B.dtype), ctx)
-            func = tvm.build(s, [A, W, B], device)
-            time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
-            cost = time_f(a, w, b).mean
-            print('conv: %g secs/op' % cost)
 
             np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-5)
 
