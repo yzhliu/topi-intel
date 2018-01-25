@@ -469,11 +469,41 @@ def test_conv2d_nchw():
     cost_conv = []
     schedules = []
 
-    # g1mb1_ic3ih224iw224_oc64oh112ow112_kh7kw7_sh2sw2_ph3pw3_n : 0.773982 ms
-    in_channel, in_size, num_filter, kernel, stride, padding = 3, 224, 64, 7, 2, 3
+    # g1mb1_ic3ih224iw224_oc64oh112ow112_kh7kw7_sh2sw2_ph3pw3_n"resnet18_0" : 0.773982 ms
+    # in_channel, in_size, num_filter, kernel, stride, padding = 3, 224, 64, 7, 2, 3
 
-    # g1mb1_ic64ih56iw56_oc64oh56ow56_kh3kw3_sh1sw1_ph1pw1_n : 0.72514 ms
+    # g1mb1_ic64ih56iw56_oc64oh56ow56_kh3kw3_sh1sw1_ph1pw1_n"resnet18_1" : 0.72514 ms
     # in_channel, in_size, num_filter, kernel, stride, padding = 64, 56, 64, 3, 1, 1
+
+    # g1mb1_ic64ih56iw56_oc64oh56ow56_kh1kw1_sh1sw1_ph0pw0_n"resnet18_2"
+    # in_channel, in_size, num_filter, kernel, stride, padding = 64, 56, 64, 1, 1, 0
+
+    # g1mb1_ic64ih56iw56_oc128oh28ow28_kh3kw3_sh2sw2_ph1pw1_n"resnet18_3"
+    # in_channel, in_size, num_filter, kernel, stride, padding = 64, 56, 128, 3, 2, 1
+
+    # g1mb1_ic64ih56iw56_oc128oh28ow28_kh1kw1_sh2sw2_ph0pw0_n"resnet18_4"
+    in_channel, in_size, num_filter, kernel, stride, padding = 64, 56, 128, 1, 2, 0
+
+    # g1mb1_ic128ih28iw28_oc128oh28ow28_kh3kw3_sh1sw1_ph1pw1_n"resnet18_5"
+    # in_channel, in_size, num_filter, kernel, stride, padding = 128, 28, 128, 3, 1, 1
+
+    # g1mb1_ic128ih28iw28_oc256oh14ow14_kh3kw3_sh2sw2_ph1pw1_n"resnet18_6"
+    # in_channel, in_size, num_filter, kernel, stride, padding = 128, 28, 256, 3, 2, 1
+
+    # g1mb1_ic128ih28iw28_oc256oh14ow14_kh1kw1_sh2sw2_ph0pw0_n"resnet18_7"
+    # in_channel, in_size, num_filter, kernel, stride, padding = 128, 28, 256, 1, 2, 0
+
+    # g1mb1_ic256ih14iw14_oc256oh14ow14_kh3kw3_sh1sw1_ph1pw1_n"resnet18_8"
+    # in_channel, in_size, num_filter, kernel, stride, padding = 256, 14, 256, 3, 1, 1
+
+    # g1mb1_ic256ih14iw14_oc512oh7ow7_kh3kw3_sh2sw2_ph1pw1_n"resnet18_9"
+    # in_channel, in_size, num_filter, kernel, stride, padding = 256, 14, 512, 3, 2, 1
+
+    # g1mb1_ic256ih14iw14_oc512oh7ow7_kh1kw1_sh2sw2_ph0pw0_n"resnet18_10"
+    # in_channel, in_size, num_filter, kernel, stride, padding = 256, 14, 512, 1, 2, 0
+
+    # g1mb1_ic512ih7iw7_oc512oh7ow7_kh3kw3_sh1sw1_ph1pw1_n"resnet18_11"
+    # in_channel, in_size, num_filter, kernel, stride, padding = 512, 7, 512, 3, 1, 1
 
     out_size = (in_size + 2 * padding - kernel) // stride + 1
     vhw_candidates = factors(out_size)
@@ -504,7 +534,7 @@ def test_conv2d_nchw():
                 schedules.append(sch)
 
                 if len(cost_conv) >= 20:
-                    idx = np.argmin(cost_all)
+                    idx = np.argmin(cost_conv)
                     report.write('%s\tall=%f\tconv=%f\tdata=%f\tkernel=%f\n' %
                                  (str(sch), cost_all[idx], cost_conv[idx], cost_data[idx], cost_kernel[idx]))
                     report.flush()
