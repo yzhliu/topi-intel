@@ -8,6 +8,12 @@ from tvm.contrib import graph_runtime
 from mxnet import gluon
 from mxnet.gluon.model_zoo.vision import get_model
 
+import sys
+sys.path.append('schedule')
+from rasp import *
+
+num_pass = 20
+
 def end2end_benchmark(model, target, batch_size):
     num_classes = 1000
     image_shape = (3, 224, 224)
@@ -28,18 +34,26 @@ def end2end_benchmark(model, target, batch_size):
     input_data = tvm.nd.array(data_array, ctx=ctx)
     module.set_input('data', input_data)
 
-    s = time.time()
-    module.run()
-    tvm_time = time.time() - s
-    print("TVM %s inference time for batch size of %d: %f" % (model, batch_size, tvm_time))
+    times = []
+    for i in range(num_pass):
+        s = time.time()
+        module.run()
+        tvm_time = time.time() - s
+        times.append(tvm_time)
+    print("TVM %s inference time for batch size of %d: %f" % (model, batch_size, np.mean(times)))
+    # print(times)
     tvm_out = module.get_output(0, out=tvm.nd.empty(out_shape))
 
 
-    s = time.time()
-    mxnet_out = block(mx.nd.array(data_array))
-    mxnet_out.asnumpy()
-    mkl_time = time.time() - s
-    print("MKL %s inference time for batch size of %d: %f" % (model, batch_size, mkl_time))
+    times = []
+    for i in range(num_pass):
+        s = time.time()
+        mxnet_out = block(mx.nd.array(data_array))
+        mxnet_out.asnumpy()
+        mkl_time = time.time() - s
+        times.append(mkl_time)
+    print("MKL %s inference time for batch size of %d: %f" % (model, batch_size, np.mean(times)))
+    # print(times)
 
     np.testing.assert_array_almost_equal(tvm_out.asnumpy(), mxnet_out.asnumpy(), decimal=3)
 
@@ -48,7 +62,8 @@ def end2end_benchmark(model, target, batch_size):
 
 if __name__ == "__main__":
     batch_size = 1
-    target = "llvm -mcpu=core-avx2"
+    # target = "llvm -mcpu=core-avx2"
+    target = 'llvm -mcpu=skylake-avx512' # export TVM_NUM_THREADS=4 on c5xlarge
     # tm, mm = end2end_benchmark('mobilenet1.0', target, batch_size)
     tm, mm = end2end_benchmark('resnet18_v1', target, batch_size)
     print(tm, mm)
