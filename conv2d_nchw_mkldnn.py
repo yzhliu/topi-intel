@@ -12,18 +12,18 @@ device = 'llvm -mcpu=skylake-avx512'
 # device = 'llvm'
 
 dtype = 'float32'
-in_channel, in_size, num_filter, kernel_size, stride, padding = 64, 56, 64, 3, 1, 1
+batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 64, 56, 64, 3, 1, 1
 bn = 16
 ur_w = 28
 
 def schedule_pack_data(input):
     # input: c, h, w
     osize = in_size + 2 * padding
-    shape = (in_channel//bn, osize, osize, bn)
+    shape = (batch_size, in_channel//bn, osize, osize, bn)
     # shape = (in_channel, osize, osize)
-    data_pad = tvm.compute(shape, lambda C, h, w, c: tvm.select(
+    data_pad = tvm.compute(shape, lambda n, C, h, w, c: tvm.select(
         tvm.all(h >= padding, h < osize-padding, w >= padding, w < osize-padding),
-        input[C*bn+c, h-padding, w-padding], 0.0
+        input[n, C*bn+c, h-padding, w-padding], 0.0
     ))
     s = tvm.create_schedule(data_pad.op)
     return s, data_pad
@@ -39,14 +39,14 @@ def schedule_pack_kernel(input):
 
 def schedule_conv(data, kernel):
     osize = (in_size + 2 * padding - kernel_size) // stride + 1
-    oshape = (num_filter//bn, osize, osize, bn)
+    oshape = (batch_size, num_filter//bn, osize, osize, bn)
 
     ic = tvm.reduce_axis((0, in_channel), name='ic')
     kh = tvm.reduce_axis((0, kernel_size), name='kh')
     kw = tvm.reduce_axis((0, kernel_size), name='kw')
 
-    conv = tvm.compute(oshape, lambda oc_chunk, oh, ow, oc_block:
-        tvm.sum(data[ic//bn, oh*stride+kh, ow*stride+kw, ic%bn].astype(dtype) *
+    conv = tvm.compute(oshape, lambda n, oc_chunk, oh, ow, oc_block:
+        tvm.sum(data[n, ic//bn, oh*stride+kh, ow*stride+kw, ic%bn].astype(dtype) *
                 kernel[oc_chunk, ic//bn, kh, kw, ic%bn, oc_block],
                 axis=[ic, kh, kw]),
         name='conv'
@@ -56,20 +56,20 @@ def schedule_conv(data, kernel):
     C = conv
     CC = s.cache_write(C, 'global')
 
-    oc_chunk, oh, ow, oc_block = s[C].op.axis
+    batch, oc_chunk, oh, ow, oc_block = s[C].op.axis
 
     ow_chunk, ow_block = s[C].split(ow, factor=ur_w)
-    s[C].reorder(oc_chunk, oh, ow_chunk, ow_block, oc_block)
+    s[C].reorder(batch, oc_chunk, oh, ow_chunk, ow_block, oc_block)
     s[C].vectorize(oc_block)
 
     s[C].parallel(oc_chunk)
-    s[C].pragma(oc_chunk, "parallel_launch_point")
+    s[C].pragma(batch, "parallel_launch_point")
     s[C].pragma(oc_chunk, "parallel_stride_pattern")
-    s[C].pragma(oc_chunk, "parallel_barrier_when_finish")
+    s[C].pragma(batch, "parallel_barrier_when_finish")
 
     s[CC].compute_at(s[C], ow_chunk)
     print(s[CC].op.axis)
-    oc_chunk, oh, ow, oc_block = s[CC].op.axis
+    _, oc_chunk, oh, ow, oc_block = s[CC].op.axis
     ic, kh, kw = s[CC].op.reduce_axis
 
     ow_chunk, ow_block = s[CC].split(ow, factor=ur_w)
@@ -85,14 +85,14 @@ def schedule_conv(data, kernel):
 
 def schedule_unpack_conv(input):
     osize = (in_size + 2 * padding - kernel_size) // stride + 1
-    oshape = (num_filter, osize, osize)
-    unpack = tvm.compute(oshape, lambda oc, oh, ow: input[oc//bn, oh, ow, oc%bn])
+    oshape = (batch_size, num_filter, osize, osize)
+    unpack = tvm.compute(oshape, lambda n, oc, oh, ow: input[n, oc//bn, oh, ow, oc%bn])
     s = tvm.create_schedule(unpack.op)
     return s, unpack
 
 def verify():
     ctx = tvm.context(device, 0)
-    A = tvm.placeholder((in_channel, in_size, in_size), name='A')
+    A = tvm.placeholder((batch_size, in_channel, in_size, in_size), name='A')
     W = tvm.placeholder((num_filter, in_channel, kernel_size, kernel_size), name='W')
 
     a_shape = get_const_tuple(A.shape)
@@ -101,10 +101,10 @@ def verify():
 
     @memoize("topi.tests.verify_conv_chw_mkldnn")
     def get_ref_data():
-        a_np = np.random.uniform(size=(1,) + a_shape).astype(dtype)
+        a_np = np.random.uniform(size=a_shape).astype(dtype)
         w_np = np.random.uniform(size=w_shape).astype(dtype)
         conv_np = topi.testing.conv2d_nchw_python(a_np, w_np, stride, padding)
-        return np.squeeze(a_np, axis=0), w_np, np.squeeze(conv_np, axis=0)
+        return a_np, w_np, conv_np
 
     a_np, w_np, conv_np = get_ref_data()
 
@@ -130,7 +130,7 @@ def verify():
     print(tvm.lower(s, [A_pack, W_pack, Conv], simple_mode=True))
     conv = tvm.nd.array(np.zeros(get_const_tuple(Conv.shape), dtype=dtype), ctx)
     func = tvm.build(s, [A_pack, W_pack, Conv], device)
-    time_f = func.time_evaluator(func.entry_name, ctx, number=5000)
+    time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
     cost_conv = time_f(a_pack, w_pack, conv).mean
     print('conv: %g sec/op' % cost_conv)
     func.save('conv.s')
