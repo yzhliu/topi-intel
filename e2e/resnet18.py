@@ -10,9 +10,9 @@ from mxnet.gluon.model_zoo.vision import get_model
 
 import sys
 sys.path.append('schedule')
-from rasp import *
+from avx512_common import *
 
-num_pass = 20
+num_pass = 10000
 
 def end2end_benchmark(model, target, batch_size):
     num_classes = 1000
