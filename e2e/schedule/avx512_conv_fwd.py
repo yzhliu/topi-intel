@@ -13,37 +13,37 @@ from topi.nn.conv2d import _get_workload
 from topi import generic
 from topi.nn.util import infer_pad, infer_stride
 
-_SCHEDULES = [
-    # float32 imagenet
-    AVX512ConvCommonFwd(3, 16, 28, False),
-    AVX512ConvCommonFwd(16, 16, 28, False),
-    AVX512ConvCommonFwd(16, 16, 28, False),
-    AVX512ConvCommonFwd(16, 16, 28, False),
-    AVX512ConvCommonFwd(16, 16, 28, False),
-    AVX512ConvCommonFwd(16, 16, 28, False),
-    AVX512ConvCommonFwd(16, 16, 14, False),
-    AVX512ConvCommonFwd(16, 16, 14, False),
-    AVX512ConvCommonFwd(16, 16, 14, True),
-    AVX512ConvCommonFwd(16, 32, 7, True),
-    AVX512ConvCommonFwd(16, 32, 7, False),
-    AVX512ConvCommonFwd(16, 16, 7, True)
-]
-
 # _SCHEDULES = [
 #     # float32 imagenet
 #     AVX512ConvCommonFwd(3, 16, 28, False),
 #     AVX512ConvCommonFwd(16, 16, 28, False),
-#     AVX512Conv1x1Fwd(16, 16, 1, 28),
 #     AVX512ConvCommonFwd(16, 16, 28, False),
-#     AVX512Conv1x1Fwd(16, 16, 1, 28),
+#     AVX512ConvCommonFwd(16, 16, 28, False),
+#     AVX512ConvCommonFwd(16, 16, 28, False),
 #     AVX512ConvCommonFwd(16, 16, 28, False),
 #     AVX512ConvCommonFwd(16, 16, 14, False),
-#     AVX512Conv1x1Fwd(16, 16, 2, 14),
+#     AVX512ConvCommonFwd(16, 16, 14, False),
 #     AVX512ConvCommonFwd(16, 16, 14, True),
 #     AVX512ConvCommonFwd(16, 32, 7, True),
-#     AVX512Conv1x1Fwd(16, 16, 1, 7),
+#     AVX512ConvCommonFwd(16, 32, 7, False),
 #     AVX512ConvCommonFwd(16, 16, 7, True)
 # ]
+
+_SCHEDULES = [
+    # float32 imagenet
+    AVX512ConvCommonFwd(3, 16, 28, False),
+    AVX512ConvCommonFwd(16, 16, 28, False),
+    AVX512Conv1x1Fwd(16, 16, 1, 28),
+    AVX512ConvCommonFwd(16, 16, 28, False),
+    AVX512Conv1x1Fwd(16, 16, 1, 28),
+    AVX512ConvCommonFwd(16, 16, 28, False),
+    AVX512ConvCommonFwd(16, 16, 14, False),
+    AVX512Conv1x1Fwd(16, 16, 2, 14),
+    AVX512ConvCommonFwd(16, 16, 14, True),
+    AVX512ConvCommonFwd(16, 32, 7, True),
+    AVX512Conv1x1Fwd(16, 16, 1, 7),
+    AVX512ConvCommonFwd(16, 16, 7, True)
+]
 
 _SCH_TO_DECL_FUNC = {
     AVX512ConvCommonFwd: avx512_conv_common._declaration_conv,

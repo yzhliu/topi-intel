@@ -125,3 +125,54 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, o
     s[O].pragma(batch, "parallel_barrier_when_finish")
 
     return s
+
+if __name__ == "__main__":
+    device = 'llvm -mcpu=skylake-avx512'
+    dtype = 'float32'
+
+    # W2
+    batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 64, 56, 64, 1, 1, 0
+    @_get_schedule.register("cpu", override=True)
+    def _get_schedule_conv(wkl):
+        return AVX512Conv1x1Fwd(16, 16, 1, 28)
+
+    ctx = tvm.context(device, 0)
+    A = tvm.placeholder((batch_size, in_channel, in_size, in_size), name='A')
+    W = tvm.placeholder((num_filter, in_channel, kernel_size, kernel_size), name='W')
+
+    a_shape = get_const_tuple(A.shape)
+    w_shape = get_const_tuple(W.shape)
+
+    def get_ref_data():
+        a_np = np.random.uniform(size=a_shape).astype(dtype)
+        w_np = np.random.uniform(size=w_shape).astype(dtype)
+        conv_np = topi.testing.conv2d_nchw_python(a_np, w_np, stride, padding)
+        return a_np, w_np, conv_np
+
+    a_np, w_np, conv_np = get_ref_data()
+
+    with tvm.target.create(device):
+        Conv = _declaration_conv(A, W, stride, padding, 'NCHW', dtype)
+        s = tvm.create_schedule(Conv.op)
+
+        op = Conv.op
+        output = op.output(0)
+        conv_out = op.input_tensors[0]
+
+        kernel_pack = conv_out.op.input_tensors[1]
+        kernel = kernel_pack.op.input_tensors[0]
+
+        data_vec = conv_out.op.input_tensors[0]
+        data = data_vec.op.input_tensors[0]
+        data_pad = None
+        if isinstance(data.op, tvm.tensor.ComputeOp) and "pad" in data.op.name:
+            data_pad = data
+            data = data_pad.op.input_tensors[0]
+
+        s = _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output)
+        print(tvm.lower(s, [A, W, Conv], simple_mode=True))
+        conv_unpack = tvm.nd.array(np.zeros(get_const_tuple(Conv.shape), dtype=dtype), ctx)
+        func = tvm.build(s, [A, W, Conv], device)
+        time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
+        cost_unpack = time_f(tvm.nd.array(a_np), tvm.nd.array(w_np), conv_unpack).mean
+        print('conv: %g ms/op' % (cost_unpack * 1000.0))

@@ -147,65 +147,114 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, o
 
     return s
 
-
 if __name__ == "__main__":
-    pass
-    # W0
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 3, 224, 64, 7, 2, 3
-    # ic_bn, oc_bn, ur_w = 3, 16, 28
-    # verify(1, 3, 224, 64, 7, 2, 3)
-
-    # W1
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 64, 56, 64, 3, 1, 1
-    # ic_bn, oc_bn, ur_w = 16, 16, 28
-    # verify(1, 64, 56, 64, 3, 1, 1)
+    device = 'llvm -mcpu=skylake-avx512'
+    dtype = 'float32'
 
     # W2
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 64, 56, 64, 1, 1, 0
-    # ic_bn, oc_bn, ur_w = 16, 16, 28
-    # verify(1, 64, 56, 64, 1, 1, 0)
+    batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 64, 56, 64, 1, 1, 0
 
-    # W3
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 64, 56, 128, 3, 2, 1
-    # ic_bn, oc_bn, ur_w = 16, 16, 28
-    # verify(1, 64, 56, 128, 3, 2, 1)
+    @_get_schedule.register("cpu", override=True)
+    def _get_schedule_conv(wkl):
+        return AVX512ConvCommonFwd(16, 16, 28, False)
 
-    # W4
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 64, 56, 128, 1, 2, 0
-    # ic_bn, oc_bn, ur_w = 16, 16, 28
-    # verify(1, 64, 56, 128, 1, 2, 0)
+    ctx = tvm.context(device, 0)
+    A = tvm.placeholder((batch_size, in_channel, in_size, in_size), name='A')
+    W = tvm.placeholder((num_filter, in_channel, kernel_size, kernel_size), name='W')
 
-    # W5
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 128, 28, 128, 3, 1, 1
-    # ic_bn, oc_bn, ur_w = 16, 16, 28
-    # verify(1, 128, 28, 128, 3, 1, 1)
+    a_shape = get_const_tuple(A.shape)
+    w_shape = get_const_tuple(W.shape)
 
-    # W6
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 128, 28, 256, 3, 2, 1
-    # ic_bn, oc_bn, ur_w = 16, 16, 14
-    # verify(1, 128, 28, 256, 3, 2, 1)
+    def get_ref_data():
+        a_np = np.random.uniform(size=a_shape).astype(dtype)
+        w_np = np.random.uniform(size=w_shape).astype(dtype)
+        conv_np = topi.testing.conv2d_nchw_python(a_np, w_np, stride, padding)
+        return a_np, w_np, conv_np
 
-    # W7
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 128, 28, 256, 1, 2, 0
-    # ic_bn, oc_bn, ur_w = 16, 16, 14
-    # verify(1, 128, 28, 256, 1, 2, 0)
+    a_np, w_np, conv_np = get_ref_data()
 
-    # W8
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 256, 14, 256, 3, 1, 1
-    # ic_bn, oc_bn, ur_w, unroll_kw = 16, 16, 14, True
-    # verify(1, 256, 14, 256, 3, 1, 1)
+    with tvm.target.create(device):
+        Conv = _declaration_conv(A, W, stride, padding, 'NCHW', dtype)
+        s = tvm.create_schedule(Conv.op)
 
-    # W9
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 256, 14, 512, 3, 2, 1
-    # ic_bn, oc_bn, ur_w, unroll_kw = 16, 32, 7, True
-    # verify(1, 256, 14, 512, 3, 2, 1)
+        op = Conv.op
+        output = op.output(0)
+        conv_out = op.input_tensors[0]
 
-    # W10
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 256, 14, 512, 1, 2, 0
-    # ic_bn, oc_bn, ur_w = 16, 32, 7
-    # verify(1, 256, 14, 512, 1, 2, 0)
+        kernel_pack = conv_out.op.input_tensors[1]
+        kernel = kernel_pack.op.input_tensors[0]
 
-    # W11
-    # batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 512, 7, 512, 3, 1, 1
-    # ic_bn, oc_bn, ur_w, unroll_kw = 16, 16, 7, True
-    # verify(1, 512, 7, 512, 3, 1, 1)
+        data_vec = conv_out.op.input_tensors[0]
+        data = data_vec.op.input_tensors[0]
+        data_pad = None
+        if isinstance(data.op, tvm.tensor.ComputeOp) and "pad" in data.op.name:
+            data_pad = data
+            data = data_pad.op.input_tensors[0]
+
+        s = _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output)
+        print(tvm.lower(s, [A, W, Conv], simple_mode=True))
+        conv_unpack = tvm.nd.array(np.zeros(get_const_tuple(Conv.shape), dtype=dtype), ctx)
+        func = tvm.build(s, [A, W, Conv], device)
+        time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
+        cost_unpack = time_f(tvm.nd.array(a_np), tvm.nd.array(w_np), conv_unpack).mean
+        print('conv: %g ms/op' % (cost_unpack * 1000.0))
+
+# W0
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 3, 224, 64, 7, 2, 3
+# ic_bn, oc_bn, ur_w = 3, 16, 28
+# verify(1, 3, 224, 64, 7, 2, 3)
+
+# W1
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 64, 56, 64, 3, 1, 1
+# ic_bn, oc_bn, ur_w = 16, 16, 28
+# verify(1, 64, 56, 64, 3, 1, 1)
+
+# W2
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 64, 56, 64, 1, 1, 0
+# ic_bn, oc_bn, ur_w = 16, 16, 28
+# verify(1, 64, 56, 64, 1, 1, 0)
+
+# W3
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 64, 56, 128, 3, 2, 1
+# ic_bn, oc_bn, ur_w = 16, 16, 28
+# verify(1, 64, 56, 128, 3, 2, 1)
+
+# W4
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 64, 56, 128, 1, 2, 0
+# ic_bn, oc_bn, ur_w = 16, 16, 28
+# verify(1, 64, 56, 128, 1, 2, 0)
+
+# W5
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 128, 28, 128, 3, 1, 1
+# ic_bn, oc_bn, ur_w = 16, 16, 28
+# verify(1, 128, 28, 128, 3, 1, 1)
+
+# W6
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 128, 28, 256, 3, 2, 1
+# ic_bn, oc_bn, ur_w = 16, 16, 14
+# verify(1, 128, 28, 256, 3, 2, 1)
+
+# W7
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 128, 28, 256, 1, 2, 0
+# ic_bn, oc_bn, ur_w = 16, 16, 14
+# verify(1, 128, 28, 256, 1, 2, 0)
+
+# W8
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 256, 14, 256, 3, 1, 1
+# ic_bn, oc_bn, ur_w, unroll_kw = 16, 16, 14, True
+# verify(1, 256, 14, 256, 3, 1, 1)
+
+# W9
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 256, 14, 512, 3, 2, 1
+# ic_bn, oc_bn, ur_w, unroll_kw = 16, 32, 7, True
+# verify(1, 256, 14, 512, 3, 2, 1)
+
+# W10
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 256, 14, 512, 1, 2, 0
+# ic_bn, oc_bn, ur_w = 16, 32, 7
+# verify(1, 256, 14, 512, 1, 2, 0)
+
+# W11
+# batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding = 1, 512, 7, 512, 3, 1, 1
+# ic_bn, oc_bn, ur_w, unroll_kw = 16, 16, 7, True
+# verify(1, 512, 7, 512, 3, 1, 1)
