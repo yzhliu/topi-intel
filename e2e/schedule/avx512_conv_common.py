@@ -1,3 +1,4 @@
+from __future__ import absolute_import as _abs
 import numpy as np
 import tvm
 import topi
@@ -6,44 +7,13 @@ from topi.util import get_const_tuple
 from collections import namedtuple
 
 from topi.nn.conv2d import conv2d, _get_schedule
-from topi.nn.conv2d import _WORKLOADS
 from topi.nn.conv2d import _get_workload
-from topi import generic
 from topi.nn.util import infer_pad, infer_stride
 
-device = 'llvm -mcpu=skylake-avx512'
-dtype = 'float32'
+AVX512ConvCommonFwd = namedtuple('AVX512ConvCommonFwd', ['ic_bn', 'oc_bn', 'ur_w', 'unroll_kw'])
 
-AVX512CommonFwd = namedtuple('AVX512CommonFwd', ['ic_bn', 'oc_bn', 'ur_w', 'unroll_kw'])
-
-_SCHEDULES = [
-    # float32 imagenet
-    AVX512CommonFwd(3, 16, 28, False),
-    AVX512CommonFwd(16, 16, 28, False),
-    AVX512CommonFwd(16, 16, 28, False),
-    AVX512CommonFwd(16, 16, 28, False),
-    AVX512CommonFwd(16, 16, 28, False),
-    AVX512CommonFwd(16, 16, 28, False),
-    AVX512CommonFwd(16, 16, 14, False),
-    AVX512CommonFwd(16, 16, 14, False),
-    AVX512CommonFwd(16, 16, 14, True),
-    AVX512CommonFwd(16, 32, 7, True),
-    AVX512CommonFwd(16, 32, 7, False),
-    AVX512CommonFwd(16, 16, 7, True)
-]
-
-
-@_get_schedule.register("cpu", override=True)
-def _get_schedule_conv(wkl):
-    if wkl not in _WORKLOADS:
-        raise ValueError("no schedule for such workload: {}".format(wkl))
-    idx = _WORKLOADS.index(wkl)
-    sch = _SCHEDULES[idx]
-    return sch
-
-
-@conv2d.register("cpu", override=True)
 def _declaration_conv(data, kernel, stride, padding, layout, out_dtype):
+    # print('Run in avx512_conv_common decl')
     assert layout == 'NCHW', "only support NCHW convolution on rasp"
     assert data.shape[0].value == 1, "only support batch size=1 convolution on rasp"
     wkl = _get_workload(data, kernel, stride, padding, out_dtype)
@@ -92,7 +62,7 @@ def _declaration_conv(data, kernel, stride, padding, layout, out_dtype):
     kw = tvm.reduce_axis((0, kernel_width), name='kw')
 
     conv = tvm.compute(oshape, lambda n, oc_chunk, oh, ow, oc_block:
-        tvm.sum(data_vec[n, ic // sch.ic_bn, oh * HSTR + kh, ic % sch.ic_bn, ow * WSTR + kw].astype(dtype) *
+        tvm.sum(data_vec[n, ic // sch.ic_bn, oh * HSTR + kh, ic % sch.ic_bn, ow * WSTR + kw].astype(out_dtype) *
                 kernel_pack[oc_chunk, ic // sch.ic_bn, kh, kw, ic % sch.ic_bn, oc_block],
                 axis=[ic, kh, kw]), name='conv')
 
@@ -102,6 +72,7 @@ def _declaration_conv(data, kernel, stride, padding, layout, out_dtype):
 
 
 def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output):
+    # print('Run in avx512_conv_common sch')
     # no stride and padding info here
     padding = infer_pad(data, data_pad)
     if data_pad is None:
@@ -109,7 +80,7 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, o
     else:
         stride = infer_stride(data_pad, kernel, output)
     wkl = _get_workload(data, kernel, stride, padding, output.dtype)
-    sch = _get_schedule_conv(wkl)
+    sch = _get_schedule(wkl)
 
     A, W = data, kernel_pack
     A0, A1 = data_pad, data_vec
@@ -176,63 +147,6 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, o
 
     return s
 
-
-@generic.schedule_conv2d_nchw.register(["cpu"], override=True)
-def schedule_conv2d(outs):
-    s = tvm.create_schedule([x.op for x in outs])
-
-    op = outs[0].op
-    output = op.output(0)
-    conv_out = op.input_tensors[0]
-
-    kernel_pack = conv_out.op.input_tensors[1]
-    kernel = kernel_pack.op.input_tensors[0]
-
-    data_vec = conv_out.op.input_tensors[0]
-    data = data_vec.op.input_tensors[0]
-    data_pad = None
-    if isinstance(data.op, tvm.tensor.ComputeOp) and "pad" in data.op.name:
-        data_pad = data
-        data = data_pad.op.input_tensors[0]
-
-    _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output)
-
-    return s
-
-
-"""
-def verify(batch_size, in_channel, in_size, num_filter, kernel_size, stride, padding):
-    ctx = tvm.context(device, 0)
-    A = tvm.placeholder((batch_size, in_channel, in_size, in_size), name='A')
-    W = tvm.placeholder((num_filter, in_channel, kernel_size, kernel_size), name='W')
-
-    a_shape = get_const_tuple(A.shape)
-    w_shape = get_const_tuple(W.shape)
-
-    @memoize("topi.tests.verify_conv_chw_mkldnn")
-    def get_ref_data():
-        a_np = np.random.uniform(size=a_shape).astype(dtype)
-        w_np = np.random.uniform(size=w_shape).astype(dtype)
-        conv_np = topi.testing.conv2d_nchw_python(a_np, w_np, stride, padding)
-        return a_np, w_np, conv_np
-
-    a_np, w_np, conv_np = get_ref_data()
-
-    s, Conv = _schedule_conv(A, W, padding, stride)
-    print(tvm.lower(s, [A, W, Conv], simple_mode=True))
-
-    conv = tvm.nd.array(np.zeros(get_const_tuple(Conv.shape), dtype=dtype), ctx)
-    func = tvm.build(s, [A, W, Conv], device)
-    time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
-    cost_conv_all = time_f(tvm.nd.array(a_np), tvm.nd.array(w_np), conv)
-    cost_conv = cost_conv_all.mean
-    print('conv: %g sec/op' % cost_conv)
-    func.save('conv.s')
-
-    print('expected shape: ' + str(conv_np.shape))
-    print('unpack shape: ' + str(conv.asnumpy().shape))
-    np.testing.assert_allclose(conv.asnumpy(), conv_np, rtol=1e-5)
-"""
 
 if __name__ == "__main__":
     pass

@@ -5,14 +5,11 @@ import numpy as np
 import time
 
 from tvm.contrib import graph_runtime
-from mxnet import gluon
 from mxnet.gluon.model_zoo.vision import get_model
 
-import sys
-sys.path.append('schedule')
-from avx512_common import *
+from schedule.avx512_conv_fwd import *
 
-num_pass = 10000
+num_pass = 1000
 
 def end2end_benchmark(model, target, batch_size):
     num_classes = 1000
@@ -41,7 +38,6 @@ def end2end_benchmark(model, target, batch_size):
         tvm_time = time.time() - s
         times.append(tvm_time)
     print("TVM %s inference time for batch size of %d: %f" % (model, batch_size, np.mean(times)))
-    # print(times)
     tvm_out = module.get_output(0, out=tvm.nd.empty(out_shape))
 
 
@@ -53,7 +49,6 @@ def end2end_benchmark(model, target, batch_size):
         mkl_time = time.time() - s
         times.append(mkl_time)
     print("MKL %s inference time for batch size of %d: %f" % (model, batch_size, np.mean(times)))
-    # print(times)
 
     np.testing.assert_array_almost_equal(tvm_out.asnumpy(), mxnet_out.asnumpy(), decimal=3)
 
@@ -65,5 +60,7 @@ if __name__ == "__main__":
     # target = "llvm -mcpu=core-avx2"
     target = 'llvm -mcpu=skylake-avx512' # export TVM_NUM_THREADS=4 on c5xlarge
     # tm, mm = end2end_benchmark('mobilenet1.0', target, batch_size)
-    tm, mm = end2end_benchmark('resnet18_v1', target, batch_size)
+    # tm, mm = end2end_benchmark('resnet18_v1', target, batch_size)
+    tm, mm = end2end_benchmark('resnet34_v2', target, batch_size)
+    # tm, mm = end2end_benchmark('resnet50_v1', target, batch_size)
     print(tm, mm)
