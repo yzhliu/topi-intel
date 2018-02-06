@@ -31,6 +31,7 @@ def _declaration_conv(data, kernel, stride, padding, layout, out_dtype):
     out_width = (in_width + 2 * WPAD - kernel_width) // WSTR + 1
 
     # input: c, h, w
+    # TODO: data pad
     shape = (batch_size, in_channel // sch.ic_bn, pad_height, pad_width, sch.ic_bn)
     data_vec = tvm.compute(shape, lambda n, C, h, w, c: data[n, C * sch.ic_bn + c, h, w])
 
@@ -46,11 +47,12 @@ def _declaration_conv(data, kernel, stride, padding, layout, out_dtype):
                 axis=[ic]), name='conv')
 
     oshape = (batch_size, num_filter, out_height, out_width)
-    unpack = tvm.compute(oshape, lambda n, oc, oh, ow: conv[n, oc // sch.oc_bn, oh, ow, oc % sch.oc_bn])
+    unpack = tvm.compute(oshape, lambda n, oc, oh, ow: conv[n, oc // sch.oc_bn, oh, ow, oc % sch.oc_bn],
+                         tag='conv2d_nchw')
     return unpack
 
 
-def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output):
+def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output, last):
     # print('Run in avx512_conv_1x1 sch')
     # no stride and padding info here
     padding = infer_pad(data, data_pad)
@@ -85,7 +87,7 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, o
     s[W].pragma(parallel_axis, "parallel_stride_pattern")
     s[W].pragma(parallel_axis, "parallel_barrier_when_finish")
 
-    C, O = conv_out, output
+    C, O0, O = conv_out, output, last
     CC = s.cache_write(C, 'global')
 
     batch, oc_chunk, oh, ow, oc_block = s[C].op.axis
@@ -107,6 +109,8 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, o
     s[CC].unroll(ow_inner)
     s[CC].unroll(oh_inner)
 
+    if O0 != O:
+        s[O0].compute_inline()
     batch, oc, oh, ow = s[O].op.axis
 
     oc_chunk, oc_block = s[O].split(oc, factor=sch.oc_bn)

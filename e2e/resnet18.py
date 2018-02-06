@@ -8,8 +8,9 @@ from tvm.contrib import graph_runtime
 from mxnet.gluon.model_zoo.vision import get_model
 
 from schedule.avx512_conv_fwd import *
+# from schedule.rasp import *
 
-num_pass = 1000
+num_pass = 50
 
 def end2end_benchmark(model, target, batch_size):
     num_classes = 1000
@@ -56,11 +57,14 @@ def end2end_benchmark(model, target, batch_size):
 
 
 if __name__ == "__main__":
+    import logging
+    # logging.basicConfig(level=logging.DEBUG)
+
     batch_size = 1
     # target = "llvm -mcpu=core-avx2"
     target = 'llvm -mcpu=skylake-avx512' # export TVM_NUM_THREADS=4 on c5xlarge
     # tm, mm = end2end_benchmark('mobilenet1.0', target, batch_size)
     # tm, mm = end2end_benchmark('resnet18_v1', target, batch_size)
-    tm, mm = end2end_benchmark('resnet34_v2', target, batch_size)
-    # tm, mm = end2end_benchmark('resnet50_v1', target, batch_size)
+    # tm, mm = end2end_benchmark('resnet34_v2', target, batch_size)
+    tm, mm = end2end_benchmark('resnet50_v1', target, batch_size)
     print(tm, mm)
