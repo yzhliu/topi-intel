@@ -100,6 +100,49 @@ _SCHEDULES = [
     AVX512Conv1x1Fwd(16, 16, 1, 7),
 ]
 
+_SCHEDULES_AVX2 = [
+    # resnet 18
+    AVX512ConvCommonFwd(3, 8, 28, False),
+    AVX512ConvCommonFwd(16, 8, 28, False),
+    AVX512Conv1x1Fwd(16, 8, 1, 28),
+    AVX512ConvCommonFwd(16, 8, 28, False),
+    AVX512Conv1x1Fwd(16, 8, 1, 28),
+    AVX512ConvCommonFwd(16, 8, 28, False),
+    AVX512ConvCommonFwd(16, 8, 14, False),
+    AVX512Conv1x1Fwd(16, 8, 2, 14),
+    AVX512ConvCommonFwd(16, 8, 14, True),
+    AVX512ConvCommonFwd(16, 8, 7, True),
+    AVX512Conv1x1Fwd(16, 8, 1, 7),
+    AVX512ConvCommonFwd(16, 8, 7, True),
+    # float32 mobilenet
+    # TODO: mocked ones, need to search for best performance
+    AVX512ConvCommonFwd(3, 16, 28, False),
+    AVX512ConvCommonFwd(16, 16, 28, False),
+    AVX512ConvCommonFwd(16, 16, 28, False),
+    AVX512ConvCommonFwd(16, 16, 28, False),
+    AVX512ConvCommonFwd(16, 16, 28, False),
+    AVX512ConvCommonFwd(16, 16, 28, False),
+    AVX512ConvCommonFwd(16, 16, 14, False),
+    AVX512ConvCommonFwd(16, 16, 14, False),
+    AVX512ConvCommonFwd(16, 16, 14, True),
+    AVX512ConvCommonFwd(16, 32, 7, True),
+    # resnet 50
+    AVX512Conv1x1Fwd(16, 8, 1, 28),
+    AVX512Conv1x1Fwd(16, 8, 1, 28),
+    AVX512Conv1x1Fwd(16, 8, 1, 28),
+    AVX512Conv1x1Fwd(16, 8, 1, 28),
+    AVX512Conv1x1Fwd(16, 8, 1, 28),
+    AVX512Conv1x1Fwd(16, 8, 1, 28),
+    AVX512Conv1x1Fwd(16, 8, 2, 14),
+    AVX512Conv1x1Fwd(16, 8, 2, 14),
+    AVX512Conv1x1Fwd(16, 8, 2, 14),
+    AVX512Conv1x1Fwd(16, 8, 2, 14),
+    AVX512Conv1x1Fwd(16, 8, 1, 7),
+    AVX512Conv1x1Fwd(16, 8, 1, 7),
+    AVX512Conv1x1Fwd(16, 8, 1, 7),
+    AVX512Conv1x1Fwd(16, 8, 1, 7),
+]
+
 _SCH_TO_DECL_FUNC = {
     AVX512ConvCommonFwd: avx512_conv_common._declaration_conv,
     AVX512Conv1x1Fwd: avx512_conv_1x1._declaration_conv
@@ -147,7 +190,7 @@ def _get_schedule_conv(wkl):
     if wkl not in workloads:
         raise ValueError("no schedule for such workload: {}".format(wkl))
     idx = workloads.index(wkl)
-    sch = _SCHEDULES[idx]
+    sch = _SCHEDULES_AVX2[idx]
     return sch
 
 
