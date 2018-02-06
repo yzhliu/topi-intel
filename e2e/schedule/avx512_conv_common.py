@@ -2,13 +2,13 @@ from __future__ import absolute_import as _abs
 import numpy as np
 import tvm
 import topi
-from tvm.contrib.pickle_memoize import memoize
 from topi.util import get_const_tuple
 from collections import namedtuple
 
-from topi.nn.conv2d import conv2d, _get_schedule
+from topi.nn.conv2d import _get_schedule
 from topi.nn.conv2d import _get_workload
 from topi.nn.util import infer_pad, infer_stride
+from topi.nn.pad import pad
 
 AVX512ConvCommonFwd = namedtuple('AVX512ConvCommonFwd', ['ic_bn', 'oc_bn', 'ur_w', 'unroll_kw'])
 
@@ -34,10 +34,15 @@ def _declaration_conv(data, kernel, stride, padding, layout, out_dtype):
     # pack data
     # input: c, h, w
     shape = (batch_size, in_channel, pad_height, pad_width)
-    data_pad = tvm.compute(shape, lambda n, c, h, w: tvm.select(
-        tvm.all(h >= HPAD, h < pad_height - HPAD, w >= WPAD, w < pad_width - WPAD),
-        data[n, c, h - HPAD, w - WPAD], 0.0
-    ), name='data_pad')
+    DOPAD = (HPAD != 0 and WPAD != 0)
+    if DOPAD:
+        data_pad = pad(data, (0, 0, HPAD, WPAD), name="data_pad")
+    else:
+        data_pad = data
+    # data_pad = tvm.compute(shape, lambda n, c, h, w: tvm.select(
+    #     tvm.all(h >= HPAD, h < pad_height - HPAD, w >= WPAD, w < pad_width - WPAD),
+    #     data[n, c, h - HPAD, w - WPAD], 0.0
+    # ), name='data_pad')
 
     shape = (batch_size, in_channel // sch.ic_bn, pad_height, sch.ic_bn, pad_width)
     data_vec = tvm.compute(shape,
@@ -67,11 +72,12 @@ def _declaration_conv(data, kernel, stride, padding, layout, out_dtype):
                 axis=[ic, kh, kw]), name='conv')
 
     unpack = tvm.compute(unpack_shape,
-                         lambda n, c, h, w: conv[n, c // sch.oc_bn, h, w, c % sch.oc_bn])
+                         lambda n, c, h, w: conv[n, c // sch.oc_bn, h, w, c % sch.oc_bn],
+                         name='output_unpack',
+                         tag='conv2d_nchw')
     return unpack
 
-
-def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output):
+def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output, last):
     # print('Run in avx512_conv_common sch')
     # no stride and padding info here
     padding = infer_pad(data, data_pad)
@@ -82,10 +88,14 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, o
     wkl = _get_workload(data, kernel, stride, padding, output.dtype)
     sch = _get_schedule(wkl)
 
+    HPAD, WPAD = wkl.hpad, wkl.wpad
+    DOPAD = (HPAD != 0 and WPAD != 0)
+
     A, W = data, kernel_pack
     A0, A1 = data_pad, data_vec
     # schedule data
-    s[A0].compute_inline()
+    if DOPAD:
+        s[A0].compute_inline()
     batch, ic_chunk, ih, ic_block, iw = s[A1].op.axis
     parallel_axis = s[A1].fuse(ic_chunk, ih)
     s[A1].parallel(parallel_axis)
@@ -105,7 +115,7 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, o
     s[W].pragma(parallel_axis, "parallel_barrier_when_finish")
 
     # schedule conv
-    C, O = conv_out, output
+    C, O0, O = conv_out, output, last
     CC = s.cache_write(C, 'global')
 
     _, oc_chunk, oh, ow, oc_block = s[C].op.axis
@@ -131,6 +141,9 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, o
     s[CC].vectorize(oc_block)
 
     s[CC].unroll(ow_block)
+
+    if O0 != O:
+        s[O0].compute_inline()
 
     batch, oc, oh, ow = s[O].op.axis
     ow_chunk, ow_block = s[O].split(ow, factor=sch.ur_w)
