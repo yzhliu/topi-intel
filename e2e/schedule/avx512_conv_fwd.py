@@ -190,7 +190,7 @@ def _get_schedule_conv(wkl):
     if wkl not in workloads:
         raise ValueError("no schedule for such workload: {}".format(wkl))
     idx = workloads.index(wkl)
-    sch = _SCHEDULES_AVX2[idx]
+    sch = _SCHEDULES[idx]
     return sch
 
 

@@ -123,8 +123,7 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, o
     ow_outer, ow_inner = s[O].split(ow, factor=sch.ow_factor)
     s[O].reorder(oc_chunk, oh_outer, ow_outer, oh_inner, ow_inner, oc_block)
 
-    # parallel_axis = s[O].fuse(oc_chunk, oh)
-    parallel_axis = oc_chunk
+    parallel_axis = s[O].fuse(oc_chunk, oh_outer)
     s[C].compute_at(s[O], parallel_axis)
     s[O].vectorize(oc_block)
 

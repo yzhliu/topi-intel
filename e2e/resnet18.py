@@ -61,8 +61,8 @@ if __name__ == "__main__":
     # logging.basicConfig(level=logging.DEBUG)
 
     batch_size = 1
-    target = "llvm -mcpu=core-avx2"
-    # target = 'llvm -mcpu=skylake-avx512' # export TVM_NUM_THREADS=4 on c5xlarge
+    # target = "llvm -mcpu=core-avx2"
+    target = 'llvm -mcpu=skylake-avx512' # export TVM_NUM_THREADS=4 on c5xlarge
     # tm, mm = end2end_benchmark('mobilenet1.0', target, batch_size)
     # tm, mm = end2end_benchmark('resnet18_v1', target, batch_size)
     # tm, mm = end2end_benchmark('resnet34_v2', target, batch_size)
