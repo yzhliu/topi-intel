@@ -114,7 +114,6 @@ _SCHEDULES_AVX2 = [
     AVX512Conv1x1Fwd(16, 8, 1, 7),
     AVX512ConvCommonFwd(16, 8, 7, True),
     # float32 mobilenet
-    # TODO: mocked ones, need to search for best performance
     AVX512ConvCommonFwd(3, 8, 28, False),
     AVX512Conv1x1Fwd(16, 8, 1, 28),
     AVX512Conv1x1Fwd(16, 8, 1, 28),
