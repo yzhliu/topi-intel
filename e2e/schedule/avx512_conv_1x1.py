@@ -7,6 +7,7 @@ from topi.nn.conv2d import _get_workload
 
 from topi.util import get_const_tuple
 from topi.nn.util import infer_pad, infer_stride
+from topi.nn.pad import pad
 
 from collections import namedtuple
 
@@ -31,9 +32,13 @@ def _declaration_conv(data, kernel, stride, padding, layout, out_dtype):
     out_width = (in_width + 2 * WPAD - kernel_width) // WSTR + 1
 
     # input: c, h, w
-    # TODO: data pad
+    DOPAD = (HPAD != 0 and WPAD != 0)
+    if DOPAD:
+        data_pad = pad(data, (0, 0, HPAD, WPAD), name="data_pad")
+    else:
+        data_pad = data
     shape = (batch_size, in_channel // sch.ic_bn, pad_height, pad_width, sch.ic_bn)
-    data_vec = tvm.compute(shape, lambda n, C, h, w, c: data[n, C * sch.ic_bn + c, h, w])
+    data_vec = tvm.compute(shape, lambda n, C, h, w, c: data_pad[n, C * sch.ic_bn + c, h, w])
 
     shape = (num_filter // sch.oc_bn, in_channel // sch.ic_bn, sch.ic_bn, sch.oc_bn, 1, 1)
     kernel_pack = tvm.compute(shape,
@@ -118,8 +123,7 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, o
     ow_outer, ow_inner = s[O].split(ow, factor=sch.ow_factor)
     s[O].reorder(oc_chunk, oh_outer, ow_outer, oh_inner, ow_inner, oc_block)
 
-    # parallel_axis = s[O].fuse(oc_chunk, oh)
-    parallel_axis = oc_chunk
+    parallel_axis = s[O].fuse(oc_chunk, oh_outer)
     s[C].compute_at(s[O], parallel_axis)
     s[O].vectorize(oc_block)
 
@@ -173,7 +177,7 @@ if __name__ == "__main__":
             data_pad = data
             data = data_pad.op.input_tensors[0]
 
-        s = _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output)
+        s = _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output, output)
         print(tvm.lower(s, [A, W, Conv], simple_mode=True))
         conv_unpack = tvm.nd.array(np.zeros(get_const_tuple(Conv.shape), dtype=dtype), ctx)
         func = tvm.build(s, [A, W, Conv], device)

@@ -204,7 +204,7 @@ if __name__ == "__main__":
             data_pad = data
             data = data_pad.op.input_tensors[0]
 
-        s = _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output)
+        s = _schedule_conv(s, data, data_pad, data_vec, kernel, kernel_pack, conv_out, output, output)
         print(tvm.lower(s, [A, W, Conv], simple_mode=True))
         conv_unpack = tvm.nd.array(np.zeros(get_const_tuple(Conv.shape), dtype=dtype), ctx)
         func = tvm.build(s, [A, W, Conv], device)
