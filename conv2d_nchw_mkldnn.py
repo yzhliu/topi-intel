@@ -64,9 +64,9 @@ def schedule_conv(data, kernel):
 
     parallel_axis = s[C].fuse(oc_chunk, oh)
     s[C].parallel(parallel_axis)
-    # s[C].pragma(batch, "parallel_launch_point")
-    # s[C].pragma(parallel_axis, "parallel_stride_pattern")
-    # s[C].pragma(batch, "parallel_barrier_when_finish")
+    s[C].pragma(batch, "parallel_launch_point")
+    s[C].pragma(parallel_axis, "parallel_stride_pattern")
+    s[C].pragma(batch, "parallel_barrier_when_finish")
 
     s[CC].compute_at(s[C], ow_chunk)
     print(s[CC].op.axis)
