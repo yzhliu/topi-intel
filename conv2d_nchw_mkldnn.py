@@ -62,10 +62,11 @@ def schedule_conv(data, kernel):
     s[C].reorder(batch, oc_chunk, oh, ow_chunk, ow_block, oc_block)
     s[C].vectorize(oc_block)
 
-    s[C].parallel(oc_chunk)
-    s[C].pragma(batch, "parallel_launch_point")
-    s[C].pragma(oc_chunk, "parallel_stride_pattern")
-    s[C].pragma(batch, "parallel_barrier_when_finish")
+    parallel_axis = s[C].fuse(oc_chunk, oh)
+    s[C].parallel(parallel_axis)
+    # s[C].pragma(batch, "parallel_launch_point")
+    # s[C].pragma(parallel_axis, "parallel_stride_pattern")
+    # s[C].pragma(batch, "parallel_barrier_when_finish")
 
     s[CC].compute_at(s[C], ow_chunk)
     print(s[CC].op.axis)
@@ -112,17 +113,17 @@ def verify():
     print(tvm.lower(s, [A, A_pack], simple_mode=True))
     a_pack = tvm.nd.array(np.zeros(get_const_tuple(A_pack.shape), dtype=dtype), ctx)
     func = tvm.build(s, [A, A_pack], device)
-    time_f = func.time_evaluator(func.entry_name, ctx, number=1)
+    time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
     cost_data = time_f(tvm.nd.array(a_np), a_pack).mean
-    print('data -> data_pack: %g secs/op' % cost_data)
+    print('data -> data_pack: %g ms/op' % (cost_data * 1000.0))
 
     s, W_pack = schedule_pack_kernel(W)
     print(tvm.lower(s, [W, W_pack], simple_mode=True))
     w_pack = tvm.nd.array(np.zeros(get_const_tuple(W_pack.shape), dtype=dtype), ctx)
     func = tvm.build(s, [W, W_pack], device)
-    time_f = func.time_evaluator(func.entry_name, ctx, number=1)
+    time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
     cost_kernel = time_f(tvm.nd.array(w_np), w_pack,).mean
-    print('kernel -> kernel_pack: %g secs/op' % cost_kernel)
+    print('kernel -> kernel_pack: %g ms/op' % (cost_kernel * 1000.0))
 
     A_pack = tvm.placeholder(get_const_tuple(A_pack.shape), name='A_pack')
     W_pack = tvm.placeholder(get_const_tuple(W_pack.shape), name='W_pack')
@@ -132,7 +133,7 @@ def verify():
     func = tvm.build(s, [A_pack, W_pack, Conv], device)
     time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
     cost_conv = time_f(a_pack, w_pack, conv).mean
-    print('conv: %g sec/op' % cost_conv)
+    print('conv: %g ms/op' % (cost_conv * 1000.0))
     func.save('conv.s')
 
     Conv = tvm.placeholder(get_const_tuple(Conv.shape), name='Conv_out')
@@ -140,9 +141,9 @@ def verify():
     print(tvm.lower(s, [Conv, ConvUnpack], simple_mode=True))
     conv_unpack = tvm.nd.array(np.zeros(get_const_tuple(ConvUnpack.shape), dtype=dtype), ctx)
     func = tvm.build(s, [Conv, ConvUnpack], device)
-    time_f = func.time_evaluator(func.entry_name, ctx, number=1)
+    time_f = func.time_evaluator(func.entry_name, ctx, number=2000)
     cost_unpack = time_f(conv, conv_unpack).mean
-    print('conv unpack: %g sec/op' % cost_unpack)
+    print('conv unpack: %g ms/op' % (cost_unpack * 1000.0))
 
     # with tvm.build_config(auto_unroll_max_step=1400,
     #                       unroll_explicit=(device != "cuda")):
