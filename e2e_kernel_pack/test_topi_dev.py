@@ -58,6 +58,7 @@ def end2end_benchmark(model, target, batch_size):
 if __name__ == "__main__":
     import logging
     # logging.basicConfig(level=logging.DEBUG)
+    # KMP_AFFINITY=granularity=fine,compact,1,0 TVM_NUM_THREADS=16 OMP_NUM_THREADS=16 python test_topi_dev.py
 
     batch_size = 1
     # target = "llvm"
