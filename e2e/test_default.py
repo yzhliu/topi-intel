@@ -10,7 +10,7 @@ from tvm.contrib import graph_runtime
 from mxnet.gluon.model_zoo.vision import get_model
 
 Batch = namedtuple('Batch', ['data'])
-num_pass = 20
+num_pass = 2000
 def end2end_benchmark(model, target, batch_size):
     num_classes = 1000
     image_shape = (3, 224, 224)
@@ -20,9 +20,8 @@ def end2end_benchmark(model, target, batch_size):
 
     block = get_model(model, pretrained=True)
     block.hybridize()
-    s = time.time()
     mx_data = mx.nd.array(data_array)
-    # block(mx_data)
+    block(mx_data)
     block.export("symbol/" + model)
     sym, arg_params, aux_params = mx.model.load_checkpoint("symbol/" + model, 0)
     mod = mx.mod.Module(symbol=sym, context=mx.cpu(), label_names=None)
@@ -33,7 +32,7 @@ def end2end_benchmark(model, target, batch_size):
     net, params = nnvm.frontend.from_mxnet(block)
 
     ctx = tvm.cpu()
-    opt_level = 0
+    opt_level = 2
     with nnvm.compiler.build_config(opt_level=opt_level):
         graph, lib, params = nnvm.compiler.build(net, target, shape={"data": data_shape}, params=params)
     with open('graph.json', 'w') as fn:
@@ -50,7 +49,7 @@ def end2end_benchmark(model, target, batch_size):
         module.run()
         tvm_time = time.time() - s
         times.append(tvm_time)
-    print("TVM %s inference time for batch size of %d: %f" % (model, batch_size, np.mean(times)))
+    print("TVM %s inference time for batch size of %d: %f" % (model, batch_size, np.mean(times) * 1000))
     tvm_out = module.get_output(0, out=tvm.nd.empty(out_shape))
 
 
@@ -63,7 +62,7 @@ def end2end_benchmark(model, target, batch_size):
         mkl_time = time.time() - s
         times.append(mkl_time)
     mxnet_out = output
-    print("MKL %s inference time for batch size of %d: %f" % (model, batch_size, np.mean(times)))
+    print("MKL %s inference time for batch size of %d: %f" % (model, batch_size, np.mean(times) * 1000))
 
     np.testing.assert_array_almost_equal(tvm_out.asnumpy(), mxnet_out.asnumpy(), decimal=3)
 
