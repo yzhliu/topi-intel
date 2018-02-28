@@ -8,6 +8,7 @@ from .avx512_conv_1x1 import AVX512Conv1x1Fwd
 import tvm
 
 from topi.nn.conv2d import conv2d, _get_schedule
+from topi.nn.conv2d_prepack import conv2d_prepack
 from topi.nn.conv2d import _WORKLOADS, Workload
 from topi.nn.conv2d import _get_workload
 from topi import generic
@@ -192,7 +193,8 @@ def _get_schedule_conv(wkl):
     return sch
 
 
-@conv2d.register("cpu", override=True)
+# @conv2d.register("cpu", override=True)
+@conv2d_prepack.register("cpu", override=True)
 def _declaration_conv(data, kernel, stride, padding, layout, out_dtype):
     assert layout == 'NCHW', "only support NCHW convolution on rasp"
     assert data.shape[0].value == 1, "only support batch size=1 convolution on rasp"
@@ -201,7 +203,8 @@ def _declaration_conv(data, kernel, stride, padding, layout, out_dtype):
     return _SCH_TO_DECL_FUNC[type(sch)](data, kernel, stride, padding, layout, out_dtype)
 
 
-@generic.schedule_conv2d_nchw.register(["cpu"], override=True)
+# @generic.schedule_conv2d_nchw.register(["cpu"], override=True)
+@generic.schedule_conv2d_prepack.register(["cpu"], override=True)
 def schedule_conv2d(outs):
     """Create schedule for tensors"""
     s = tvm.create_schedule([x.op for x in outs])
