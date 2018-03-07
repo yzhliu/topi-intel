@@ -22,7 +22,7 @@ def end2end_benchmark(model, target, batch_size):
     net, params = nnvm.frontend.from_mxnet(block)
 
     ctx = tvm.cpu()
-    opt_level = 0
+    opt_level = 3
     with nnvm.compiler.build_config(opt_level=opt_level):
         graph, lib, params = nnvm.compiler.build(net, target, shape={"data": data_shape}, params=params)
     module = graph_runtime.create(graph, lib, ctx)
