@@ -71,4 +71,5 @@ if __name__ == "__main__":
     # tm, mm = end2end_benchmark('resnet34_v1', target, batch_size)
     # tm, mm = end2end_benchmark('resnet50_v1', target, batch_size)
     tm, mm = end2end_benchmark('resnet101_v1', target, batch_size)
+    # tm, mm = end2end_benchmark('resnet152_v1', target, batch_size)
     print(tm, mm)

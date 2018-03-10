@@ -660,20 +660,20 @@ def global_avg_pool2d_callback(attrs, inputs, tinfos):
     input = sym.data_reorder_back(input)
     return sym.global_avg_pool2d(input)
 
-# @reg.register_weight_prepack("max_pool2d")
-# def max_pool2d_callback(attrs, inputs, tinfos):
-#     print("MAX_POOL2D!!!")
-#     new_attrs = {k: attrs[k] for k in attrs.keys()}
-#     new_attrs['layout'] = 'NCHWc'
-#     return sym.max_pool2d(inputs[0], **new_attrs)
-#
-#
-# @reg.register_weight_prepack("avg_pool2d")
-# def avg_pool2d_callback(attrs, inputs, tinfos):
-#     print("AVG_POOL2D!!!")
-#     new_attrs = {k: attrs[k] for k in attrs.keys()}
-#     new_attrs['layout'] = 'NCHWc'
-#     return sym.avg_pool2d(inputs[0], **new_attrs)
+@reg.register_weight_prepack("max_pool2d")
+def max_pool2d_callback(attrs, inputs, tinfos):
+    print("MAX_POOL2D!!!")
+    new_attrs = {k: attrs[k] for k in attrs.keys()}
+    new_attrs['layout'] = 'NCHWc'
+    return sym.max_pool2d(inputs[0], **new_attrs)
+
+
+@reg.register_weight_prepack("avg_pool2d")
+def avg_pool2d_callback(attrs, inputs, tinfos):
+    print("AVG_POOL2D!!!")
+    new_attrs = {k: attrs[k] for k in attrs.keys()}
+    new_attrs['layout'] = 'NCHWc'
+    return sym.avg_pool2d(inputs[0], **new_attrs)
 
 
 @conv2d_nopack.register("cpu", override=True)
@@ -704,7 +704,6 @@ def schedule_conv2d(kernel_size, outs):
                 if tensor.op.input_tensors:
                     traverse(tensor.op)
 
-        print('tagtag: ' + str(op.tag))
         if 'conv2d_nChwc' in op.tag:
             print('Got conv2d_nChwc tag: ' + str(op.tag))
             output = op.output(0)
