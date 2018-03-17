@@ -554,10 +554,11 @@ def weight_prepack_conv2d(attrs, inputs, tinfos):
 
     if attrs.get_bool('use_bias'):
         bias = inputs[2]
-        bias = sym.bn_reorder(bias, bn = oc_bn)
+        bias = sym.reshape(bias, shape=(OC, oc_bn))
         return sym.conv2d_nopack(data_sym, trans_kernel, bias, **new_attrs)
     else:
         return sym.conv2d_nopack(data_sym, trans_kernel, **new_attrs)
+
 
 @reg.register_weight_prepack("max_pool2d")
 def max_pool2d_callback(attrs, inputs, tinfos):
