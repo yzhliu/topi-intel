@@ -38,8 +38,7 @@ def get_workload(data, kernel, stride, padding, out_dtype):
     original_data = tvm.placeholder((n, CI * ci, h, w))
     return _get_workload(original_data, ori_kernel, stride, padding, out_dtype)
 
-def _declaration_conv(data, kernel, stride, padding, layout, out_dtype):
-    assert layout == 'NCHWc', "only support NCHW convolution on rasp"
+def _declaration_conv(data, kernel, stride, padding, out_dtype):
     assert data.shape[0].value == 1, "only support batch size=1 convolution on rasp"
     wkl = get_workload(data, kernel, stride, padding, out_dtype)
     sch = _get_schedule(wkl)

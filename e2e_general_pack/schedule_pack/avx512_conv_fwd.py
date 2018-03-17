@@ -12,7 +12,7 @@ from nnvm.top import registry as reg
 import tvm
 from topi.nn.conv2d import conv2d, _get_schedule
 from topi.util import get_const_tuple, get_const_int
-from topi.nn.conv2d_prepack import conv2d_nopack
+from topi.nn.conv2d_prepack import conv2d_nChwc
 from topi.nn.conv2d import _WORKLOADS, Workload
 from topi.nn.conv2d import _get_workload
 from topi import generic
@@ -555,9 +555,9 @@ def weight_prepack_conv2d(attrs, inputs, tinfos):
     if attrs.get_bool('use_bias'):
         bias = inputs[2]
         bias = sym.reshape(bias, shape=(OC, oc_bn))
-        return sym.conv2d_nopack(data_sym, trans_kernel, bias, **new_attrs)
+        return sym.conv2d_nChwc(data_sym, trans_kernel, bias, **new_attrs)
     else:
-        return sym.conv2d_nopack(data_sym, trans_kernel, **new_attrs)
+        return sym.conv2d_nChwc(data_sym, trans_kernel, **new_attrs)
 
 
 @reg.register_weight_prepack("max_pool2d")
@@ -576,21 +576,21 @@ def avg_pool2d_callback(attrs, inputs, tinfos):
     return sym.avg_pool2d(inputs[0], **new_attrs)
 
 
-@conv2d_nopack.register("cpu", override=True)
-def _declaration_conv(data, kernel, kernel_size, stride, padding, layout, out_dtype):
-    assert layout == 'NCHWc', "only support NCHWc convolution on avx but get " + str(layout)
+@conv2d_nChwc.register("cpu", override=True)
+def _declaration_conv(data, kernel, num_filter, kernel_size, stride, padding, out_dtype):
     assert data.shape[0].value == 1, "only support batch size=1 convolution on avx"
     n, ic_chunk, h, w, ic_block = [x.value for x in data.shape]
     ic = ic_chunk * ic_block
-    oc, kh, kw = kernel_size
+    oc = num_filter
+    kh, kw = kernel_size
     wkl = _get_workload(tvm.placeholder((n, ic, h, w), dtype=out_dtype),
                         tvm.placeholder((oc, ic, kh, kw), dtype=out_dtype), stride, padding, out_dtype)
     sch = _get_schedule(wkl)
-    return _SCH_TO_DECL_FUNC[type(sch)](data, kernel, stride, padding, layout, out_dtype)
+    return _SCH_TO_DECL_FUNC[type(sch)](data, kernel, stride, padding, out_dtype)
 
 
-@generic.schedule_conv2d_nopack.register(["cpu"], override=True)
-def schedule_conv2d(kernel_size, outs):
+@generic.schedule_conv2d_nChwc.register(["cpu"], override=True)
+def schedule_conv2d_nChwc(num_filter, kernel_size, outs):
     """Create schedule for tensors"""
     s = tvm.create_schedule([x.op for x in outs])
 
@@ -630,7 +630,8 @@ def schedule_conv2d(kernel_size, outs):
             else:
                 padding = (0, 0)
 
-            oc, kh, kw = kernel_size
+            oc = num_filter
+            kh, kw = kernel_size
             original_kernel = tvm.placeholder((oc, ic, kh, kw), dtype=output.dtype)
 
             n, oc_chunk, oh, ow, oc_block = [x.value for x in output.shape]
@@ -640,7 +641,6 @@ def schedule_conv2d(kernel_size, outs):
                 stride = infer_stride(original_data, original_kernel, original_output)
             else:
                 stride = infer_stride(original_data_pad, original_kernel, original_output)
-
 
             wkl = _get_workload(original_data, original_kernel, stride, padding, output.dtype)
             sch = _get_schedule(wkl)

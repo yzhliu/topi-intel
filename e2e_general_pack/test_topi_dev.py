@@ -27,18 +27,14 @@ def end2end_benchmark(model, target, batch_size):
         times.append(mkl_time)
     print("MKL %s inference time for batch size of %d: %f" % (model, batch_size, np.mean(times) * 1000))
 
-    # data_array_5D = np.expand_dims(data_array, 4)
-    # print("data_array_5D shape: " + str(data_array_5D.shape))
-
     net, params = nnvm.frontend.from_mxnet(block)
     ctx = tvm.cpu()
-    opt_level = 2
+    opt_level = 3
     with nnvm.compiler.build_config(opt_level=opt_level):
         graph, lib, params = nnvm.compiler.build(net, target,
                                                  shape={"data": data_shape},
                                                  params=params,
-                                                 layout="__undef__")
-                                                 # layout="NCHW")
+                                                 layout="NCHW")
     with open('graph.json', 'w') as fn:
         fn.writelines(graph.json())
     module = graph_runtime.create(graph, lib, ctx)
@@ -62,14 +58,11 @@ def end2end_benchmark(model, target, batch_size):
 
 
 if __name__ == "__main__":
-    import logging
-    # logging.basicConfig(level=logging.DEBUG)
     # KMP_AFFINITY=granularity=fine,compact,1,0 TVM_NUM_THREADS=16 OMP_NUM_THREADS=16 python test_topi_dev.py
-
     batch_size = 1
     # target = "llvm"
     # target = "llvm -mcpu=core-avx2"
-    target = 'llvm -mcpu=skylake-avx512' # export TVM_NUM_THREADS=4 on c5xlarge
+    target = 'llvm -mcpu=skylake-avx512'
     # tm, mm = end2end_benchmark('mobilenet1.0', target, batch_size)
     tm, mm = end2end_benchmark('resnet18_v1', target, batch_size)
     # tm, mm = end2end_benchmark('resnet34_v1', target, batch_size)
