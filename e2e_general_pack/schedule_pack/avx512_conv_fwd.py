@@ -526,7 +526,6 @@ def weight_prepack_conv2d(attrs, inputs, tinfos):
     stride = ast.literal_eval(attrs['strides'])
     wkl = _get_workload(data, kernel, stride, padding, 'float32')
     sch = _get_schedule_conv(wkl)
-    print(sch)
     is_kernel_1x1 = isinstance(sch, AVX512Conv1x1Fwd)
 
 
@@ -562,7 +561,6 @@ def weight_prepack_conv2d(attrs, inputs, tinfos):
 
 @reg.register_weight_prepack("max_pool2d")
 def max_pool2d_callback(attrs, inputs, tinfos):
-    print("MAX_POOL2D!!!")
     new_attrs = {k: attrs[k] for k in attrs.keys()}
     new_attrs['layout'] = 'NCHW16c'
     return sym.max_pool2d(inputs[0], **new_attrs)
@@ -570,7 +568,6 @@ def max_pool2d_callback(attrs, inputs, tinfos):
 
 @reg.register_weight_prepack("avg_pool2d")
 def avg_pool2d_callback(attrs, inputs, tinfos):
-    print("AVG_POOL2D!!!")
     new_attrs = {k: attrs[k] for k in attrs.keys()}
     new_attrs['layout'] = 'NCHW16c'
     return sym.avg_pool2d(inputs[0], **new_attrs)
