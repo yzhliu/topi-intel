@@ -103,7 +103,7 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, conv_out, output, last):
     A0, A1 = data_pad, data_vec
     # schedule data
     if isinstance(s[A1].op, tvm.tensor.ComputeOp): # and  "conv2d_data_pack" in s[A1].op.tag:
-        if DOPAD and  "conv2d_data_pack" in s[A1].op.tag:
+        if DOPAD and "conv2d_data_pack" in s[A1].op.tag:
             s[A0].compute_inline()
         batch, ic_chunk, ih, iw, ic_block = s[A1].op.axis
         parallel_axis = s[A1].fuse(ic_chunk, ih)
@@ -114,6 +114,8 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, conv_out, output, last):
 
     batch, oc_chunk, oh, ow, oc_block = s[C].op.axis
     oh_outer, oh_inner = s[C].split(oh, factor=sch.oh_factor)
+    ow_outer, ow_inner = s[C].split(ow, factor=sch.ow_factor)
+    s[C].reorder(oc_chunk, oh_outer, ow_outer, oh_inner, ow_inner, oc_block)
     s[C].vectorize(oc_block)
 
     s[CC].compute_at(s[C], oh_outer)
@@ -128,22 +130,28 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, conv_out, output, last):
     s[CC].reorder(oc_chunk, oh_outer, ow_outer, ic_chunk, ic_block, oh_inner, ow_inner, oc_block)
     s[CC].vectorize(oc_block)
 
+    if C == O:
+        parallel_axis = s[CC].fuse(oc_chunk, oh_outer)
+        s[CC].parallel(parallel_axis)
+
     s[CC].unroll(ow_inner)
     s[CC].unroll(oh_inner)
 
     if O0 != O:
         s[O0].compute_inline()
-    batch, oc_chunk, oh, ow, oc_block = s[O].op.axis
 
-    # oc_chunk, oc_block = s[O].split(oc, factor=sch.oc_bn)
-    oh_outer, oh_inner = s[O].split(oh, factor=sch.oh_factor)
-    ow_outer, ow_inner = s[O].split(ow, factor=sch.ow_factor)
-    s[O].reorder(oc_chunk, oh_outer, ow_outer, oh_inner, ow_inner, oc_block)
+    if C != O:
+        batch, oc_chunk, oh, ow, oc_block = s[O].op.axis
 
-    parallel_axis = s[O].fuse(oc_chunk, oh_outer)
-    s[C].compute_at(s[O], parallel_axis)
-    s[O].vectorize(oc_block)
+        # oc_chunk, oc_block = s[O].split(oc, factor=sch.oc_bn)
+        oh_outer, oh_inner = s[O].split(oh, factor=sch.oh_factor)
+        ow_outer, ow_inner = s[O].split(ow, factor=sch.ow_factor)
+        s[O].reorder(oc_chunk, oh_outer, ow_outer, oh_inner, ow_inner, oc_block)
 
-    s[O].parallel(parallel_axis)
+        parallel_axis = s[O].fuse(oc_chunk, oh_outer)
+        s[C].compute_at(s[O], parallel_axis)
+        s[O].vectorize(oc_block)
+
+        s[O].parallel(parallel_axis)
 
     return s
