@@ -138,20 +138,24 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, conv_out, output, last):
     else:
         s[CC].reorder(oc_chunk, oh, ow_chunk, ic_chunk, kh, kw, ic_block, ow_block, oc_block)
 
-    s[CC].fuse(oc_chunk, oh)
+    parallel_axis = s[CC].fuse(oc_chunk, oh)
     s[CC].vectorize(oc_block)
     s[CC].unroll(ow_block)
+
+    if C == O:
+        s[CC].parallel(parallel_axis)
 
     if O0 != O:
         s[O0].compute_inline()
 
-    batch, oc_chunk, oh, ow, oc_block = s[O].op.axis
-    ow_chunk, ow_block = s[O].split(ow, factor=sch.reg_n)
-    s[O].reorder(oc_chunk, oh, ow_chunk, ow_block, oc_block)
-    parallel_axis = s[O].fuse(oc_chunk, oh)
-    s[C].compute_at(s[O], parallel_axis)
-    s[O].vectorize(oc_block)
+    if C != O:
+        batch, oc_chunk, oh, ow, oc_block = s[O].op.axis
+        ow_chunk, ow_block = s[O].split(ow, factor=sch.reg_n)
+        s[O].reorder(oc_chunk, oh, ow_chunk, ow_block, oc_block)
+        parallel_axis = s[O].fuse(oc_chunk, oh)
+        s[C].compute_at(s[O], parallel_axis)
+        s[O].vectorize(oc_block)
 
-    s[O].parallel(parallel_axis)
+        s[O].parallel(parallel_axis)
 
     return s
