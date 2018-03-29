@@ -6,7 +6,8 @@ import time
 
 from tvm.contrib import graph_runtime
 from mxnet.gluon.model_zoo.vision import get_model
-from schedule_pack.avx512_conv_fwd import *
+# from schedule_pack.avx512_conv_fwd import *
+from schedule_kernel_pack_only.avx512_conv_fwd import *
 
 num_pass = 2000
 def end2end_benchmark(model, target, batch_size):
