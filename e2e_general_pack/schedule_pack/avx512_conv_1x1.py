@@ -102,9 +102,9 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, conv_out, output, last):
     # A, W = data, kernel_pack
     A0, A1 = data_pad, data_vec
     # schedule data
+    if DOPAD and "conv2d_data_pack" in s[A1].op.tag:
+        s[A0].compute_inline()
     if isinstance(s[A1].op, tvm.tensor.ComputeOp): # and  "conv2d_data_pack" in s[A1].op.tag:
-        if DOPAD and "conv2d_data_pack" in s[A1].op.tag:
-            s[A0].compute_inline()
         batch, ic_chunk, ih, iw, ic_block = s[A1].op.axis
         parallel_axis = s[A1].fuse(ic_chunk, ih)
         s[A1].parallel(parallel_axis)
@@ -143,8 +143,6 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, conv_out, output, last):
 
     if C != O:
         batch, oc_chunk, oh, ow, oc_block = s[O].op.axis
-
-        # oc_chunk, oc_block = s[O].split(oc, factor=sch.oc_bn)
         oh_outer, oh_inner = s[O].split(oh, factor=sch.oh_factor)
         ow_outer, ow_inner = s[O].split(ow, factor=sch.ow_factor)
         s[O].reorder(oc_chunk, oh_outer, ow_outer, oh_inner, ow_inner, oc_block)

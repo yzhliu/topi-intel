@@ -512,10 +512,10 @@ def _get_schedule_conv(wkl):
     if wkl not in workloads:
         raise ValueError("no schedule for such workload: {}".format(wkl))
     idx = workloads.index(wkl)
-    if idx >= len(_SCHEDULES):
-        sch = AVX512ConvCommonFwd(16, fp32_vec_len, 28, False)
-    else:
-        sch = _SCHEDULES[idx]
+    # if idx >= len(_SCHEDULES):
+    #     sch = AVX512ConvCommonFwd(16, fp32_vec_len, 28, False)
+    # else:
+    sch = _SCHEDULES[idx]
     return sch
 
 
@@ -529,7 +529,6 @@ def weight_prepack_conv2d(attrs, inputs, tinfos):
     stride = ast.literal_eval(attrs['strides'])
     wkl = _get_workload(data, kernel, stride, padding, 'float32')
     sch = _get_schedule_conv(wkl)
-    print(sch)
     is_kernel_1x1 = isinstance(sch, AVX512Conv1x1Fwd)
 
     ic_bn, oc_bn = sch.ic_bn, sch.oc_bn
@@ -560,20 +559,6 @@ def weight_prepack_conv2d(attrs, inputs, tinfos):
         return sym.conv2d_nChwc(data_sym, trans_kernel, bias, **new_attrs)
     else:
         return sym.conv2d_nChwc(data_sym, trans_kernel, **new_attrs)
-
-
-@reg.register_weight_prepack("max_pool2d")
-def max_pool2d_callback(attrs, inputs, tinfos):
-    new_attrs = {k: attrs[k] for k in attrs.keys()}
-    new_attrs['layout'] = 'NCHW16c'
-    return sym.max_pool2d(inputs[0], **new_attrs)
-
-
-@reg.register_weight_prepack("avg_pool2d")
-def avg_pool2d_callback(attrs, inputs, tinfos):
-    new_attrs = {k: attrs[k] for k in attrs.keys()}
-    new_attrs['layout'] = 'NCHW16c'
-    return sym.avg_pool2d(inputs[0], **new_attrs)
 
 
 @conv2d_nChwc.register("cpu", override=True)
@@ -615,6 +600,7 @@ def schedule_conv2d_nChwc(num_filter, kernel_size, outs):
                 if isinstance(data_vec.op, tvm.tensor.ComputeOp) and len(data_vec.op.input_tensors) > 0 and "pad" not in data_vec.op.tag \
                 else data_vec
             data_pad = None
+
             if isinstance(data.op, tvm.tensor.ComputeOp) and "pad" in data.op.tag:
                 data_pad = data
                 data = data_pad.op.input_tensors[0]
