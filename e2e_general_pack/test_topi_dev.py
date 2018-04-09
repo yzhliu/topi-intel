@@ -35,8 +35,8 @@ def end2end_benchmark(model, target, batch_size):
     with nnvm.compiler.build_config(opt_level=opt_level):
         graph, lib, params = nnvm.compiler.build(net, target,
                                                  shape={"data": data_shape},
-                                                 params=params,
-                                                 layout="NCHW")
+                                                 params=params)
+                                                 # layout="NCHW")
     with open('graph.json', 'w') as fn:
         fn.writelines(graph.json())
     module = graph_runtime.create(graph, lib, ctx)

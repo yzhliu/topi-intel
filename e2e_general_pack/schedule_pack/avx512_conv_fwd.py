@@ -519,46 +519,55 @@ def _get_schedule_conv(wkl):
     return sch
 
 
+@reg.register_weight_prepack("max_pool2d")
+def weight_prepack_max_pool2d(attrs, inputs, tinfos):
+    new_attrs = {k : attrs[k] for k in attrs.keys()}
+    new_attrs['layout'] = 'NCHW_c'
+    return sym.max_pool2d(inputs[0], **new_attrs)
+
+
+@reg.register_weight_prepack("avg_pool2d")
+def weight_prepack_avg_pool2d(attrs, inputs, tinfos):
+    new_attrs = {k : attrs[k] for k in attrs.keys()}
+    new_attrs['layout'] = 'NCHW_c'
+    return sym.avg_pool2d(inputs[0], **new_attrs)
+
+
+@reg.register_weight_prepack("global_avg_pool2d")
+def weight_prepack_global_avg_pool2d(attrs, inputs, tinfos):
+    new_attrs = {k : attrs[k] for k in attrs.keys()}
+    new_attrs['layout'] = 'NCHW_c'
+    return sym.global_avg_pool2d(inputs[0], **new_attrs)
+
+
 @reg.register_weight_prepack("conv2d")
 def weight_prepack_conv2d(attrs, inputs, tinfos):
-    import ast
-    data_sym = inputs[0]
+    copy_inputs = [inputs[i] for i in range(len(inputs))]
+
     data = tinfos[0]
     kernel = tinfos[1]
+
+    import ast
     padding = ast.literal_eval(attrs['padding'])
     stride = ast.literal_eval(attrs['strides'])
+
     wkl = _get_workload(data, kernel, stride, padding, 'float32')
     sch = _get_schedule_conv(wkl)
     is_kernel_1x1 = isinstance(sch, AVX512Conv1x1Fwd)
-
     ic_bn, oc_bn = sch.ic_bn, sch.oc_bn
 
     new_attrs = {k : attrs[k] for k in attrs.keys()}
-    new_attrs['ic_bn'] = ic_bn
-    new_attrs['oc_bn'] = oc_bn
-    new_attrs.pop('layout', None)
+    new_attrs['layout'] = 'NCHW%dc' % ic_bn
+    new_attrs['out_layout'] = 'NCHW%dc' % oc_bn
 
-    kernel_sym = inputs[1]
-    oc, ic, h, w = get_const_tuple(tinfos[1].shape)
-    OC = oc // oc_bn
-    IC = ic // ic_bn
-    trans_kernel = sym.transpose(kernel_sym, axes=(1, 2, 3, 0))
-    trans_kernel = sym.reshape(trans_kernel, shape = (ic, h, w, OC, oc_bn))
-    trans_kernel = sym.transpose(trans_kernel, axes=(1, 2, 3, 4, 0))
-    trans_kernel = sym.reshape(trans_kernel, shape=(h, w, OC, oc_bn, IC, ic_bn))
     if is_kernel_1x1:
         # (oc, ic, h, w) -> (OC, IC, ic, oc, h, w)
-        trans_kernel = sym.transpose(trans_kernel, axes=(2, 4, 5, 3, 0, 1))
+        new_attrs['kernel_layout'] = 'OI%di%doHW' % (ic_bn, oc_bn)
     else:
         # (oc, ic, h, w) -> (OC, IC, h, w, ic, oc)
-        trans_kernel = sym.transpose(trans_kernel, axes=(2, 4, 0, 1, 5, 3))
+        new_attrs['kernel_layout'] = 'OIHW%di%do' % (ic_bn, oc_bn)
 
-    if attrs.get_bool('use_bias'):
-        bias = inputs[2]
-        bias = sym.reshape(bias, shape=(OC, oc_bn))
-        return sym.conv2d_nChwc(data_sym, trans_kernel, bias, **new_attrs)
-    else:
-        return sym.conv2d_nChwc(data_sym, trans_kernel, **new_attrs)
+    return sym.conv2d_nChwc(*copy_inputs, **new_attrs)
 
 
 @conv2d_nChwc.register("cpu", override=True)
