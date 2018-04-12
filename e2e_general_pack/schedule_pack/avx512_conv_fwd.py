@@ -31,6 +31,7 @@ _SCHEDULES = [
     AVX512ConvCommonFwd(16, fp32_vec_len, 14, False),
     AVX512Conv1x1Fwd(16, fp32_vec_len, 2, 14),
     AVX512ConvCommonFwd(16, fp32_vec_len, 14, True),
+    # AVX512ConvCommonFwd(16, 32, 7, True),
     AVX512ConvCommonFwd(16, fp32_vec_len, 7, True),
     AVX512Conv1x1Fwd(16, fp32_vec_len, 1, 7),
     AVX512ConvCommonFwd(16, fp32_vec_len, 7, True),
@@ -517,27 +518,6 @@ def _get_schedule_conv(wkl):
     # else:
     sch = _SCHEDULES[idx]
     return sch
-
-
-@reg.register_weight_prepack("max_pool2d")
-def weight_prepack_max_pool2d(attrs, inputs, tinfos):
-    new_attrs = {k : attrs[k] for k in attrs.keys()}
-    new_attrs['layout'] = 'NCHW_c'
-    return sym.max_pool2d(inputs[0], **new_attrs)
-
-
-@reg.register_weight_prepack("avg_pool2d")
-def weight_prepack_avg_pool2d(attrs, inputs, tinfos):
-    new_attrs = {k : attrs[k] for k in attrs.keys()}
-    new_attrs['layout'] = 'NCHW_c'
-    return sym.avg_pool2d(inputs[0], **new_attrs)
-
-
-@reg.register_weight_prepack("global_avg_pool2d")
-def weight_prepack_global_avg_pool2d(attrs, inputs, tinfos):
-    new_attrs = {k : attrs[k] for k in attrs.keys()}
-    new_attrs['layout'] = 'NCHW_c'
-    return sym.global_avg_pool2d(inputs[0], **new_attrs)
 
 
 @reg.register_weight_prepack("conv2d")
