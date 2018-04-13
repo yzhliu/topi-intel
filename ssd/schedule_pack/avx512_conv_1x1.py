@@ -10,10 +10,14 @@ from topi.nn.pad import pad
 
 from collections import namedtuple
 
-AVX512Conv1x1Fwd = namedtuple('AVX512Conv1x1Fwd', ['ic_bn', 'oc_bn', 'oh_factor', 'ow_factor'])
+AVX512Conv1x1Fwd = namedtuple('AVX512Conv1x1Fwd',
+                              ['ic_bn', 'oc_bn', 'oh_factor', 'ow_factor', 'layout_in'])
 
 def infer_stride(data, kernel, out):
-    _, _, IH, IW, _ = data.shape
+    if len(data.shape) == 5:
+        _, _, IH, IW, _ = data.shape
+    else:
+        _, _, IH, IW = data.shape
     CO, _, _, co, KH, KW = kernel.shape
     CO *= co
     _, _, OH, OW, _ = out.shape
@@ -24,8 +28,12 @@ def infer_stride(data, kernel, out):
 def infer_pad(data, data_pad):
     if data_pad is None:
         return 0, 0
-    _, _, IH, IW, _ = data.shape
-    _, _, TH, TW, _ = data_pad.shape
+    if len(data.shape) == 5:
+        _, _, IH, IW, _ = data.shape
+        _, _, TH, TW, _ = data_pad.shape
+    else:
+        _, _, IH, IW = data.shape
+        _, _, TH, TW = data_pad.shape
     hpad = (TH - IH) // 2
     wpad = (TW - IW) // 2
     return get_const_int(hpad), get_const_int(wpad)
@@ -34,8 +42,11 @@ def get_workload(data, kernel, stride, padding, out_dtype):
     """ Get the workload structure. """
     CO, CI, ci, co, KH, KW = [x.value for x in kernel.shape]
     ori_kernel = tvm.placeholder((CO*co, CI*ci, KH, KW))
-    n, _, h, w, _ = [x.value for x in data.shape]
-    original_data = tvm.placeholder((n, CI * ci, h, w))
+    if len(data.shape) == 5:
+        n, _, h, w, _ = [x.value for x in data.shape]
+        original_data = tvm.placeholder((n, CI * ci, h, w))
+    else:
+        original_data = data
     return _get_workload(original_data, ori_kernel, stride, padding, out_dtype)
 
 def _declaration_conv(data, kernel, stride, padding, out_dtype):
@@ -46,7 +57,16 @@ def _declaration_conv(data, kernel, stride, padding, out_dtype):
     HPAD, WPAD = wkl.hpad, wkl.wpad
     HSTR, WSTR = wkl.hstride, wkl.wstride
 
-    batch_size, in_channel_chunk, in_height, in_width, in_channel_block = get_const_tuple(data.shape)
+    ndim_input = len(data.shape)
+
+    if ndim_input == 5:
+        batch_size, in_channel_chunk, in_height, in_width, in_channel_block = get_const_tuple(data.shape)
+        in_channel = in_channel_block * in_channel_chunk
+    else:
+        assert ndim_input == 4
+        in_channel_block = 0
+        batch_size, in_channel, in_height, in_width = get_const_tuple(data.shape)
+
     num_filter, _, _, co, kernel_height, kernel_width = get_const_tuple(kernel.shape)
     num_filter *= co
 
@@ -59,17 +79,28 @@ def _declaration_conv(data, kernel, stride, padding, out_dtype):
     # input: c, h, w
     DOPAD = (HPAD != 0 and WPAD != 0)
     if DOPAD:
-        data_pad = pad(data, (0, 0, HPAD, WPAD, 0), name="data_pad")
+        if ndim_input == 5:
+            data_pad = pad(data, (0, 0, HPAD, WPAD, 0), name="data_pad")
+        else:
+            assert ndim_input == 4
+            data_pad = pad(data, (0, 0, HPAD, WPAD), name="data_pad")
     else:
         data_pad = data
 
-    in_channel = in_channel_block * in_channel_chunk
     if in_channel_block != sch.ic_bn:
         print('WARNING!!! (1x1) in_channel_block=%d vs sch.ic_bn=%d' % (in_channel_block, sch.ic_bn))
         shape = (batch_size, in_channel // sch.ic_bn, pad_height, pad_width, sch.ic_bn)
-        data_vec = tvm.compute(shape, lambda n, C, h, w, c:
-            data_pad[n, (C * sch.ic_bn + c) // in_channel_block, h, w, (C * sch.ic_bn + c) % in_channel_block],
-                               tag='conv2d_data_pack')
+        if ndim_input == 5:
+            data_vec = tvm.compute(shape,
+                                   lambda n, C, h, w, c:
+                                   data_pad[n, (C * sch.ic_bn + c) // in_channel_block, h, w, (C * sch.ic_bn + c) % in_channel_block],
+                                   name='data_vec', tag="conv2d_data_pack")
+        else:
+            assert ndim_input == 4
+            data_vec = tvm.compute(shape,
+                                   lambda n, C, h, w, c:
+                                   data_pad[n, (C * sch.ic_bn + c), h, w],
+                                   name='data_vec', tag="conv2d_data_pack")
     else:
         data_vec = data_pad
 
