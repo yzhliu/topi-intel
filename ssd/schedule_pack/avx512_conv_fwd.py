@@ -47,89 +47,32 @@ _SCHEDULES = [
     AVX512ConvCommonFwd(ic_bn=32, oc_bn=32, reg_n=8, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW32c"), #22
     # SSD Resnet50 other
     # Layer 2
-    # AVX512Conv1x1Fwd(ic_bn=32, oc_bn=64, oh_factor=2, ow_factor=2),
-    # AVX512ConvCommonFwd(ic_bn=64, oc_bn=64, reg_n=4, unroll_kw=True),
-    # # Layer 3
-    # AVX512Conv1x1Fwd(ic_bn=64, oc_bn=16, oh_factor=1, ow_factor=8),
-    # AVX512ConvCommonFwd(ic_bn=16, oc_bn=64, reg_n=4, unroll_kw=True),
-    # # Layer 4
-    # AVX512Conv1x1Fwd(ic_bn=64, oc_bn=4, oh_factor=2, ow_factor=4),
-    # AVX512ConvCommonFwd(ic_bn=4, oc_bn=128, reg_n=2, unroll_kw=False),
-    # # Layer 5
-    # AVX512Conv1x1Fwd(ic_bn=128, oc_bn=128, oh_factor=2, ow_factor=2),
-    # AVX512ConvCommonFwd(ic_bn=128, oc_bn=128, reg_n=1, unroll_kw=True),
-    # # loc_preds
-    # AVX512ConvCommonFwd(ic_bn=32, oc_bn=16, reg_n=16, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=32, oc_bn=12, reg_n=16, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=64, oc_bn=12, reg_n=8, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=64, oc_bn=6, reg_n=4, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=128, oc_bn=8, reg_n=2, unroll_kw=False),
-    # AVX512ConvCommonFwd(ic_bn=128, oc_bn=16, reg_n=1, unroll_kw=True),
-    # # cls_preds
-    # AVX512ConvCommonFwd(ic_bn=32, oc_bn=14, reg_n=16, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=32, oc_bn=14, reg_n=16, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=64, oc_bn=14, reg_n=8, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=64, oc_bn=14, reg_n=4, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=128, oc_bn=12, reg_n=2, unroll_kw=False),
-    # AVX512ConvCommonFwd(ic_bn=128, oc_bn=4, reg_n=1, unroll_kw=False),
+    AVX512Conv1x1Fwd(ic_bn=32, oc_bn=64, oh_factor=2, ow_factor=2, layout_in="NCHW32c", layout_out="NCHW64c"),
+    AVX512ConvCommonFwd(ic_bn=64, oc_bn=64, reg_n=4, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW64c"),
+    # Layer 3
+    AVX512Conv1x1Fwd(ic_bn=64, oc_bn=16, oh_factor=1, ow_factor=8, layout_in="NCHW64c", layout_out="NCHW16c"),
+    AVX512ConvCommonFwd(ic_bn=16, oc_bn=64, reg_n=4, unroll_kw=True, layout_in="NCHW16c", layout_out="NCHW64c"),
+    # Layer 4
+    AVX512Conv1x1Fwd(ic_bn=64, oc_bn=4, oh_factor=2, ow_factor=4, layout_in="NCHW64c", layout_out="NCHW4c"),
+    AVX512ConvCommonFwd(ic_bn=4, oc_bn=128, reg_n=2, unroll_kw=False, layout_in="NCHW4c", layout_out="NCHW128c"),
+    # Layer 5
+    AVX512Conv1x1Fwd(ic_bn=128, oc_bn=128, oh_factor=2, ow_factor=2, layout_in="NCHW128c", layout_out="NCHW128c"),
+    AVX512ConvCommonFwd(ic_bn=128, oc_bn=128, reg_n=1, unroll_kw=True, layout_in="NCHW128c", layout_out="NCHW128c"),
+    # loc_preds
+    AVX512ConvCommonFwd(ic_bn=32, oc_bn=16, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW16c"),
+    AVX512ConvCommonFwd(ic_bn=32, oc_bn=12, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW12c"),
+    AVX512ConvCommonFwd(ic_bn=64, oc_bn=12, reg_n=8, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW12c"),
+    AVX512ConvCommonFwd(ic_bn=64, oc_bn=6, reg_n=4, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW6c"),
+    AVX512ConvCommonFwd(ic_bn=128, oc_bn=8, reg_n=2, unroll_kw=False, layout_in="NCHW128c", layout_out="NCHW8c"),
+    AVX512ConvCommonFwd(ic_bn=128, oc_bn=16, reg_n=1, unroll_kw=True, layout_in="NCHW128c", layout_out="NCHW16c"),
+    # cls_preds
+    AVX512ConvCommonFwd(ic_bn=32, oc_bn=14, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW14c"),
+    AVX512ConvCommonFwd(ic_bn=32, oc_bn=14, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW14c"),
+    AVX512ConvCommonFwd(ic_bn=64, oc_bn=14, reg_n=8, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW14c"),
+    AVX512ConvCommonFwd(ic_bn=64, oc_bn=14, reg_n=4, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW14c"),
+    AVX512ConvCommonFwd(ic_bn=128, oc_bn=12, reg_n=2, unroll_kw=False, layout_in="NCHW128c", layout_out="NCHW12c"),
+    AVX512ConvCommonFwd(ic_bn=128, oc_bn=4, reg_n=1, unroll_kw=False, layout_in="NCHW128c", layout_out="NCHW4c"),
 ]
-"""
-
-_SCHEDULES = [
-    # SSD Resnet50
-    AVX512ConvCommonFwd(ic_bn=3, oc_bn=fp32_vec_len, reg_n=32, unroll_kw=False, layout_in="NCHW", layout_out="NCHW16c"), #0
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #1
-    AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=32, unroll_kw=False, layout_in="NCHW16c", layout_out="NCHW16c"), #2
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #3
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #4
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #5
-    AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=32, unroll_kw=False, layout_in="NCHW16c", layout_out="NCHW16c"), #6
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #7
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #8
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #9
-    AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=32, unroll_kw=False, layout_in="NCHW16c", layout_out="NCHW16c"), #10
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #11
-    AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=32, unroll_kw=False, layout_in="NCHW16c", layout_out="NCHW16c"), #12
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #13
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #14
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #15
-    AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=32, unroll_kw=False, layout_in="NCHW16c", layout_out="NCHW16c"), #16
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=1, ow_factor=32, layout_in="NCHW16c", layout_out="NCHW16c"), #17
-    AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=16, unroll_kw=False, layout_in="NCHW16c", layout_out="NCHW16c"), #18
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=2, ow_factor=16, layout_in="NCHW16c", layout_out="NCHW16c"), #19, last conv in resnet-50
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=2, ow_factor=16, layout_in="NCHW16c", layout_out="NCHW16c"), #20
-    AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=2, ow_factor=16, layout_in="NCHW16c", layout_out="NCHW16c"), #21
-    AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=16, unroll_kw=False, layout_in="NCHW16c", layout_out="NCHW16c"), #22
-    # SSD Resnet50 other
-    # Layer 2
-    # AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=2, ow_factor=16),
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=8, unroll_kw=False),
-    # # Layer 3
-    # AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=4, ow_factor=8),
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=4, unroll_kw=False),
-    # # Layer 4
-    # AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=4, ow_factor=4),
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=2, unroll_kw=False),
-    # # Layer 5
-    # AVX512Conv1x1Fwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, oh_factor=2, ow_factor=2),
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=1, unroll_kw=True),
-    # # loc_preds
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=32, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=16, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=8, reg_n=8, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=8, reg_n=4, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=2, unroll_kw=False),
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=fp32_vec_len, reg_n=1, unroll_kw=False),
-    # # cls_preds
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=14, reg_n=16, unroll_kw=False),
-    # AVX512ConvCommonFwd(ic_bn=fp32_vec_len, oc_bn=14, reg_n=16, unroll_kw=False),
-    # AVX512ConvCommonFwd(ic_bn=64, oc_bn=14, reg_n=8, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=64, oc_bn=14, reg_n=4, unroll_kw=True),
-    # AVX512ConvCommonFwd(ic_bn=128, oc_bn=12, reg_n=2, unroll_kw=False),
-    # AVX512ConvCommonFwd(ic_bn=128, oc_bn=17, reg_n=1, unroll_kw=False),
-]
-"""
-
 
 _SCH_TO_DECL_FUNC = {
     AVX512ConvCommonFwd: avx512_conv_common._declaration_conv,
@@ -251,11 +194,11 @@ def _declaration_conv(data, kernel, num_filter, kernel_size, stride, padding, ou
     wkl = _get_workload(tvm.placeholder((n, ic, h, w), dtype=out_dtype),
                         tvm.placeholder((oc, ic, kh, kw), dtype=out_dtype), stride, padding, out_dtype)
     sch = _get_schedule(wkl)
-    return _SCH_TO_DECL_FUNC[type(sch)](data, kernel, stride, padding, out_dtype)
+    return _SCH_TO_DECL_FUNC[type(sch)](wkl, data, kernel)
 
 
 @generic.schedule_conv2d_nChwc.register(["cpu"], override=True)
-def schedule_conv2d_nChwc(num_filter, kernel_size, outs):
+def schedule_conv2d_nChwc(attrs, num_filter, kernel_size, outs):
     """Create schedule for tensors"""
     s = tvm.create_schedule([x.op for x in outs])
 
@@ -286,44 +229,23 @@ def schedule_conv2d_nChwc(num_filter, kernel_size, outs):
                 data = data_pad.op.input_tensors[0]
 
             ndim_input = len(data.shape)
-
             if ndim_input == 5:
                 n, ic_chunk, h, w, ic_block = [x.value for x in data.shape]
                 ic = ic_chunk * ic_block
             else:
                 n, ic, h, w = [x.value for x in data.shape]
-
             original_data = tvm.placeholder((n, ic, h, w), dtype=output.dtype)
-
-            if data_pad is not None:
-                if ndim_input == 5:
-                    n, _, pad_h, pad_w, _ = [x.value for x in data_pad.shape]
-                    original_data_pad = tvm.placeholder((n, ic, pad_h, pad_w), dtype=output.dtype)
-                else:
-                    assert ndim_input == 4
-                    original_data_pad = data_pad
-                padding = infer_pad(original_data, original_data_pad)
-            else:
-                padding = (0, 0)
 
             oc = num_filter
             kh, kw = kernel_size
             original_kernel = tvm.placeholder((oc, ic, kh, kw), dtype=output.dtype)
 
-            if len(output.shape) == 5:
-                n, oc_chunk, oh, ow, oc_block = [x.value for x in output.shape]
-                original_output = tvm.placeholder((n, oc_chunk*oc_block, oh, ow), dtype=output.dtype)
-            else:
-                original_output = output
-
-            if data_pad is None:
-                stride = infer_stride(original_data, original_kernel, original_output)
-            else:
-                stride = infer_stride(original_data_pad, original_kernel, original_output)
+            stride = attrs.get_int_tuple("strides")
+            padding = attrs.get_int_tuple("padding")
 
             wkl = _get_workload(original_data, original_kernel, stride, padding, output.dtype)
             sch = _get_schedule(wkl)
-            _SCH_TO_SCH_FUNC[type(sch)](s, data, data_pad, data_vec,
+            _SCH_TO_SCH_FUNC[type(sch)](s, wkl, data, data_pad, data_vec,
                                         kernel, conv_out, output, outs[0])
 
 

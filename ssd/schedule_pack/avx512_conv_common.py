@@ -12,47 +12,8 @@ from topi.nn.pad import pad
 AVX512ConvCommonFwd = namedtuple('AVX512ConvCommonFwd',
                                  ['ic_bn', 'oc_bn', 'reg_n', 'unroll_kw', 'layout_in', 'layout_out'])
 
-def infer_stride(data, kernel, out):
-    if len(data.shape) == 5:
-        _, _, IH, IW, _ = data.shape
-    else:
-        _, _, IH, IW = data.shape
-    CO, _, KH, KW, _, co = kernel.shape
-    CO *= co
-    if len(out.shape) == 5:
-        _, _, OH, OW, _ = out.shape
-    else:
-        _, _, OH, OW = out.shape
-    hstride = (IH - KH) // (OH - 1)
-    wstride = (IW - KW) // (OW - 1)
-    return get_const_int(hstride), get_const_int(wstride)
 
-def infer_pad(data, data_pad):
-    if data_pad is None:
-        return 0, 0
-    if len(data.shape) == 5:
-        _, _, IH, IW, _ = data.shape
-        _, _, TH, TW, _ = data_pad.shape
-    else:
-        _, _, IH, IW = data.shape
-        _, _, TH, TW = data_pad.shape
-    hpad = (TH - IH) // 2
-    wpad = (TW - IW) // 2
-    return get_const_int(hpad), get_const_int(wpad)
-
-def get_workload(data, kernel, stride, padding, out_dtype):
-    """ Get the workload structure. """
-    CO, CI, KH, KW, ci, co = [x.value for x in kernel.shape]
-    ori_kernel = tvm.placeholder((CO*co, CI*ci, KH, KW))
-    if len(data.shape) == 5:
-        n, _, h, w, _ = [x.value for x in data.shape]
-        original_data = tvm.placeholder((n, CI*ci, h, w))
-    else:
-        original_data = data
-    return _get_workload(original_data, ori_kernel, stride, padding, out_dtype)
-
-def _declaration_conv(data, kernel, stride, padding, out_dtype):
-    wkl = get_workload(data, kernel, stride, padding, out_dtype)
+def _declaration_conv(wkl, data, kernel):
     sch = _get_schedule(wkl)
 
     HPAD, WPAD = wkl.hpad, wkl.wpad
@@ -102,13 +63,6 @@ def _declaration_conv(data, kernel, stride, padding, out_dtype):
                                    lambda n, C, h, w, c:
                                    data_pad[n, (C * sch.ic_bn + c), h, w],
                                    name='data_vec', tag="conv2d_data_pack")
-            # data_vec = tvm.compute(shape,
-            #                        lambda n, C, h, w, c:
-            #                        tvm.select(
-            #                        tvm.all(h >= HPAD, h < pad_height - HPAD, w >= WPAD, w < pad_width - WPAD),
-            #                        data[n, C*sch.ic_bn+c, h - HPAD, w - WPAD], 0.0),
-            #                        name='data_vec', tag="conv2d_data_pack")
-            # data_pad = data_vec
     else:
         data_vec = data_pad
 
@@ -155,14 +109,7 @@ def _declaration_conv(data, kernel, stride, padding, out_dtype):
     return unpack
 
 
-def _schedule_conv(s, data, data_pad, data_vec, kernel, conv_out, output, last):
-    # no stride and padding info here
-    padding = infer_pad(data, data_pad)
-    if data_pad is None:
-        stride = infer_stride(data, kernel, output)
-    else:
-        stride = infer_stride(data_pad, kernel, output)
-    wkl = get_workload(data, kernel, stride, padding, output.dtype)
+def _schedule_conv(s, wkl, data, data_pad, data_vec, kernel, conv_out, output, last):
     sch = _get_schedule(wkl)
 
     HPAD, WPAD = wkl.hpad, wkl.wpad
