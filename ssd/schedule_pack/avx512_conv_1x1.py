@@ -11,7 +11,7 @@ from topi.nn.pad import pad
 from collections import namedtuple
 
 AVX512Conv1x1Fwd = namedtuple('AVX512Conv1x1Fwd',
-                              ['ic_bn', 'oc_bn', 'oh_factor', 'ow_factor', 'layout_in'])
+                              ['ic_bn', 'oc_bn', 'oh_factor', 'ow_factor', 'layout_in', 'layout_out'])
 
 def infer_stride(data, kernel, out):
     if len(data.shape) == 5:
@@ -20,7 +20,10 @@ def infer_stride(data, kernel, out):
         _, _, IH, IW = data.shape
     CO, _, _, co, KH, KW = kernel.shape
     CO *= co
-    _, _, OH, OW, _ = out.shape
+    if len(out.shape) == 5:
+        _, _, OH, OW, _ = out.shape
+    else:
+        _, _, OH, OW = out.shape
     hstride = (IH - KH) // (OH - 1)
     wstride = (IW - KW) // (OW - 1)
     return get_const_int(hstride), get_const_int(wstride)
@@ -104,16 +107,44 @@ def _declaration_conv(data, kernel, stride, padding, out_dtype):
     else:
         data_vec = data_pad
 
-    kernel_pack = kernel
+    kernel_vec = kernel
 
     oshape = (batch_size, num_filter // sch.oc_bn, out_height, out_width, sch.oc_bn)
     ic = tvm.reduce_axis((0, in_channel), name='ic')
-    conv = tvm.compute(oshape, lambda n, oc_chunk, oh, ow, oc_block:
-        tvm.sum(data_vec[n, ic // sch.ic_bn, oh * HSTR, ow * WSTR, ic % sch.ic_bn].astype(out_dtype) *
-                kernel_pack[oc_chunk, ic // sch.ic_bn, ic % sch.ic_bn, oc_block, 0, 0],
-                axis=[ic]), name='conv2d_nChwc', tag='conv2d_nChwc')
 
-    return conv
+    import re
+    unpack_channel_block = re.findall(r'\d+', sch.layout_out)
+    if len(unpack_channel_block) == 0:
+        conv = tvm.compute(oshape, lambda n, oc_chunk, oh, ow, oc_block:
+        tvm.sum(data_vec[n, ic // sch.ic_bn, oh * HSTR, ow * WSTR, ic % sch.ic_bn].astype(out_dtype) *
+                kernel_vec[oc_chunk, ic // sch.ic_bn, ic % sch.ic_bn, oc_block, 0, 0],
+                axis=[ic]), name='conv2d') # tag='conv2d_nChwc')
+        unpack_shape = (batch_size, num_filter, out_height, out_width)
+        unpack = tvm.compute(unpack_shape,
+                             lambda n, c, h, w: conv[n, c // sch.oc_bn, h, w, c % sch.oc_bn],
+                             name='output_unpack',
+                             tag='conv2d_nChwc_unpack')
+    else:
+        assert len(unpack_channel_block) == 1
+        unpack_channel_block = int(unpack_channel_block[0])
+        if unpack_channel_block == sch.oc_bn:
+            return tvm.compute(oshape, lambda n, oc_chunk, oh, ow, oc_block:
+                    tvm.sum(data_vec[n, ic // sch.ic_bn, oh * HSTR, ow * WSTR, ic % sch.ic_bn].astype(out_dtype) *
+                    kernel_vec[oc_chunk, ic // sch.ic_bn, ic % sch.ic_bn, oc_block, 0, 0],
+                    axis=[ic]), name='conv2d', tag='conv2d_nChwc')
+        else:
+            conv = tvm.compute(oshape, lambda n, oc_chunk, oh, ow, oc_block:
+                    tvm.sum(data_vec[n, ic // sch.ic_bn, oh * HSTR, ow * WSTR, ic % sch.ic_bn].astype(out_dtype) *
+                    kernel_vec[oc_chunk, ic // sch.ic_bn, ic % sch.ic_bn, oc_block, 0, 0],
+                    axis=[ic]), name='conv2d')  # tag='conv2d_nChwc')
+            unpack_shape = (batch_size, num_filter // unpack_channel_block, out_height, out_width, unpack_channel_block)
+            unpack = tvm.compute(unpack_shape,
+                                 lambda n, C, h, w, c: conv[n, (C * unpack_channel_block + c) // sch.oc_bn, h, w, (
+                                         C * unpack_channel_block + c) % sch.oc_bn],
+                                 name='output_unpack',
+                                 tag='conv2d_nChwc_unpack')
+
+    return unpack
 
 
 def _schedule_conv(s, data, data_pad, data_vec, kernel, conv_out, output, last):
@@ -173,15 +204,31 @@ def _schedule_conv(s, data, data_pad, data_vec, kernel, conv_out, output, last):
         s[O0].compute_inline()
 
     if C != O:
-        batch, oc_chunk, oh, ow, oc_block = s[O].op.axis
-        oh_outer, oh_inner = s[O].split(oh, factor=sch.oh_factor)
-        ow_outer, ow_inner = s[O].split(ow, factor=sch.ow_factor)
-        s[O].reorder(oc_chunk, oh_outer, ow_outer, oh_inner, ow_inner, oc_block)
+        if len(s[O].op.axis) == 5:
+            batch, oc_chunk, oh, ow, oc_block = s[O].op.axis
+            oh_outer, oh_inner = s[O].split(oh, factor=sch.oh_factor)
+            ow_outer, ow_inner = s[O].split(ow, factor=sch.ow_factor)
+            s[O].reorder(oc_chunk, oh_outer, ow_outer, oh_inner, ow_inner, oc_block)
 
-        parallel_axis = s[O].fuse(oc_chunk, oh_outer)
-        s[C].compute_at(s[O], parallel_axis)
-        s[O].vectorize(oc_block)
+            parallel_axis = s[O].fuse(oc_chunk, oh_outer)
+            s[C].compute_at(s[O], parallel_axis)
 
-        s[O].parallel(parallel_axis)
+            _, oc_block = s[O].split(oc_block, factor=sch.oc_bn)
+            s[O].vectorize(oc_block)
+
+            s[O].parallel(parallel_axis)
+        else:
+            assert len(s[O].op.axis) == 4
+            batch, oc, oh, ow = s[O].op.axis
+            oc_chunk, oc_block = s[O].split(oc, factor=sch.oc_bn)
+            oh_outer, oh_inner = s[O].split(oh, factor=sch.oh_factor)
+            ow_outer, ow_inner = s[O].split(ow, factor=sch.ow_factor)
+            s[O].reorder(oc_chunk, oh_outer, ow_outer, oh_inner, ow_inner, oc_block)
+
+            parallel_axis = s[O].fuse(oc_chunk, oh_outer)
+            s[C].compute_at(s[O], parallel_axis)
+            s[O].vectorize(oc_block)
+
+            s[O].parallel(parallel_axis)
 
     return s
