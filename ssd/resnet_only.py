@@ -33,8 +33,6 @@ def end2end_benchmark(model, target, batch_size):
         s = time.time()
         mod.forward(Batch(data=[mx_in_data]), is_train=False)
         mxnet_out = mod.get_outputs()[0]
-        # mxnet_out = block(mx.nd.array(data_array))
-        # mxnet_out.asnumpy()
         mxnet_out.wait_to_read()
         mkl_time = time.time() - s
         times.append(mkl_time)

@@ -23,6 +23,8 @@ def end2end_benchmark(body_network, target, batch_size):
     mod.bind(data_shapes=[('data', data_shape)])
     mod.set_params(arg_params, aux_params)
 
+    # mod.save_checkpoint('model_updated/ssd_resnet50', 0)
+
     mx_data = mx.nd.array(data_array)
     times = []
     for i in range(20):
@@ -33,10 +35,6 @@ def end2end_benchmark(body_network, target, batch_size):
         mkl_time = time.time() - s
         times.append(mkl_time)
     print("MKL SSD inference time for batch size of %d: %f" % (batch_size, np.mean(times) * 1000))
-
-    mxnet_out = mod.get_outputs()[0]
-    out_shape = mxnet_out.shape
-    print(out_shape)
 
     net, params = nnvm.frontend.from_mxnet(sym, mod.get_params()[0], mod.get_params()[1])
 
@@ -59,10 +57,13 @@ def end2end_benchmark(body_network, target, batch_size):
         tvm_time = time.time() - s
         times.append(tvm_time)
     print("TVM %s inference time for batch size of %d: %f" % (body_network, batch_size, np.mean(times) * 1000))
-    tvm_out = module.get_output(0, out=tvm.nd.empty(out_shape))
 
-    # decimal=3 does not work for resnet-101
-    np.testing.assert_array_almost_equal(tvm_out.asnumpy(), mxnet_out.asnumpy(), decimal=2)
+    for i in range(len(mod.get_outputs())):
+        print('Check %dth output ...' % i)
+        mxnet_out = mod.get_outputs()[i]
+        out_shape = mxnet_out.shape
+        tvm_out = module.get_output(i, out=tvm.nd.empty(out_shape))
+        np.testing.assert_array_almost_equal(tvm_out.asnumpy(), mxnet_out.asnumpy(), decimal=2)
 
 
 if __name__ == "__main__":

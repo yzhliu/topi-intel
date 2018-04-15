@@ -19,7 +19,6 @@ from topi import generic
 from topi.nn.util import infer_pad, infer_stride
 from topi import tag
 
-fp32_vec_len = 16
 _SCHEDULES = [
     # SSD Resnet50
     AVX512ConvCommonFwd(ic_bn=3, oc_bn=32, reg_n=8, unroll_kw=True, layout_in="NCHW", layout_out="NCHW32c"), #0
@@ -47,31 +46,31 @@ _SCHEDULES = [
     AVX512ConvCommonFwd(ic_bn=32, oc_bn=32, reg_n=8, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW32c"), #22
     # SSD Resnet50 other
     # Layer 2
-    AVX512Conv1x1Fwd(ic_bn=32, oc_bn=64, oh_factor=2, ow_factor=2, layout_in="NCHW32c", layout_out="NCHW64c"),
-    AVX512ConvCommonFwd(ic_bn=64, oc_bn=64, reg_n=4, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW64c"),
+    AVX512Conv1x1Fwd(ic_bn=32, oc_bn=64, oh_factor=2, ow_factor=2, layout_in="NCHW32c", layout_out="NCHW64c"), #23
+    AVX512ConvCommonFwd(ic_bn=64, oc_bn=64, reg_n=4, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW64c"), #24
     # Layer 3
-    AVX512Conv1x1Fwd(ic_bn=64, oc_bn=16, oh_factor=1, ow_factor=8, layout_in="NCHW64c", layout_out="NCHW16c"),
-    AVX512ConvCommonFwd(ic_bn=16, oc_bn=64, reg_n=4, unroll_kw=True, layout_in="NCHW16c", layout_out="NCHW64c"),
+    AVX512Conv1x1Fwd(ic_bn=64, oc_bn=16, oh_factor=1, ow_factor=8, layout_in="NCHW64c", layout_out="NCHW16c"), #25
+    AVX512ConvCommonFwd(ic_bn=16, oc_bn=64, reg_n=4, unroll_kw=True, layout_in="NCHW16c", layout_out="NCHW64c"), #26
     # Layer 4
-    AVX512Conv1x1Fwd(ic_bn=64, oc_bn=4, oh_factor=2, ow_factor=4, layout_in="NCHW64c", layout_out="NCHW4c"),
-    AVX512ConvCommonFwd(ic_bn=4, oc_bn=128, reg_n=2, unroll_kw=False, layout_in="NCHW4c", layout_out="NCHW128c"),
+    AVX512Conv1x1Fwd(ic_bn=64, oc_bn=4, oh_factor=2, ow_factor=4, layout_in="NCHW64c", layout_out="NCHW4c"), #27
+    AVX512ConvCommonFwd(ic_bn=4, oc_bn=128, reg_n=2, unroll_kw=False, layout_in="NCHW4c", layout_out="NCHW128c"), #28
     # Layer 5
-    AVX512Conv1x1Fwd(ic_bn=128, oc_bn=128, oh_factor=2, ow_factor=2, layout_in="NCHW128c", layout_out="NCHW128c"),
-    AVX512ConvCommonFwd(ic_bn=128, oc_bn=128, reg_n=1, unroll_kw=True, layout_in="NCHW128c", layout_out="NCHW128c"),
+    AVX512Conv1x1Fwd(ic_bn=128, oc_bn=128, oh_factor=2, ow_factor=2, layout_in="NCHW128c", layout_out="NCHW128c"), #29
+    AVX512ConvCommonFwd(ic_bn=128, oc_bn=128, reg_n=1, unroll_kw=True, layout_in="NCHW128c", layout_out="NCHW128c"), #30
     # loc_preds
-    AVX512ConvCommonFwd(ic_bn=32, oc_bn=16, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW16c"),
-    AVX512ConvCommonFwd(ic_bn=32, oc_bn=12, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW12c"),
-    AVX512ConvCommonFwd(ic_bn=64, oc_bn=12, reg_n=8, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW12c"),
-    AVX512ConvCommonFwd(ic_bn=64, oc_bn=6, reg_n=4, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW6c"),
-    AVX512ConvCommonFwd(ic_bn=128, oc_bn=8, reg_n=2, unroll_kw=False, layout_in="NCHW128c", layout_out="NCHW8c"),
-    AVX512ConvCommonFwd(ic_bn=128, oc_bn=16, reg_n=1, unroll_kw=True, layout_in="NCHW128c", layout_out="NCHW16c"),
+    AVX512ConvCommonFwd(ic_bn=32, oc_bn=16, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW16c"), #31
+    AVX512ConvCommonFwd(ic_bn=32, oc_bn=12, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW12c"), #32
+    AVX512ConvCommonFwd(ic_bn=64, oc_bn=12, reg_n=8, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW12c"), #33
+    AVX512ConvCommonFwd(ic_bn=64, oc_bn=6, reg_n=4, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW6c"), #34
+    AVX512ConvCommonFwd(ic_bn=128, oc_bn=8, reg_n=2, unroll_kw=False, layout_in="NCHW128c", layout_out="NCHW8c"), #35
+    AVX512ConvCommonFwd(ic_bn=128, oc_bn=16, reg_n=1, unroll_kw=True, layout_in="NCHW128c", layout_out="NCHW16c"), #36
     # cls_preds
-    AVX512ConvCommonFwd(ic_bn=32, oc_bn=14, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW14c"),
-    AVX512ConvCommonFwd(ic_bn=32, oc_bn=14, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW14c"),
-    AVX512ConvCommonFwd(ic_bn=64, oc_bn=14, reg_n=8, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW14c"),
-    AVX512ConvCommonFwd(ic_bn=64, oc_bn=14, reg_n=4, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW14c"),
-    AVX512ConvCommonFwd(ic_bn=128, oc_bn=12, reg_n=2, unroll_kw=False, layout_in="NCHW128c", layout_out="NCHW12c"),
-    AVX512ConvCommonFwd(ic_bn=128, oc_bn=4, reg_n=1, unroll_kw=False, layout_in="NCHW128c", layout_out="NCHW4c"),
+    AVX512ConvCommonFwd(ic_bn=32, oc_bn=14, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW14c"), #37
+    AVX512ConvCommonFwd(ic_bn=32, oc_bn=14, reg_n=16, unroll_kw=True, layout_in="NCHW32c", layout_out="NCHW14c"), #38
+    AVX512ConvCommonFwd(ic_bn=64, oc_bn=14, reg_n=8, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW14c"), #39
+    AVX512ConvCommonFwd(ic_bn=64, oc_bn=14, reg_n=4, unroll_kw=True, layout_in="NCHW64c", layout_out="NCHW14c"), #40
+    AVX512ConvCommonFwd(ic_bn=128, oc_bn=12, reg_n=2, unroll_kw=False, layout_in="NCHW128c", layout_out="NCHW12c"), #41
+    AVX512ConvCommonFwd(ic_bn=128, oc_bn=4, reg_n=1, unroll_kw=False, layout_in="NCHW128c", layout_out="NCHW4c"), #42
 ]
 
 _SCH_TO_DECL_FUNC = {
@@ -159,7 +158,6 @@ def alter_conv2d_layout(attrs, inputs, tinfos):
     stride = ast.literal_eval(attrs['strides'])
 
     wkl = _get_workload(data, kernel, stride, padding, 'float32')
-    print(wkl)
     sch = _get_schedule_conv(wkl)
     is_kernel_1x1 = isinstance(sch, AVX512Conv1x1Fwd)
     ic_bn, oc_bn = sch.ic_bn, sch.oc_bn
