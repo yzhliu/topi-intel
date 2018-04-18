@@ -66,9 +66,10 @@ if __name__ == "__main__":
     # target = "llvm -mcpu=core-avx2"
     target = 'llvm -mcpu=skylake-avx512'
     # tm, mm = end2end_benchmark('mobilenet1.0', target, batch_size)
-    tm, mm = end2end_benchmark('resnet18_v2', target, batch_size)
+    tm, mm = end2end_benchmark('resnet18_v1', target, batch_size)
+    # tm, mm = end2end_benchmark('resnet18_v2', target, batch_size)
     # tm, mm = end2end_benchmark('resnet34_v2', target, batch_size)
-    # tm, mm = end2end_benchmark('resnet50_v2', target, batch_size)
+    # tm, mm = end2end_benchmark('resnet50_v1', target, batch_size)
     # tm, mm = end2end_benchmark('resnet101_v1', target, batch_size)
     # tm, mm = end2end_benchmark('resnet152_v1', target, batch_size)
     print(tm, mm)
