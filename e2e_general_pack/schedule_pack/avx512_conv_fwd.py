@@ -126,7 +126,7 @@ def _get_schedule_conv(wkl):
 
 
 @reg.register_alter_op_layout("conv2d")
-def weight_prepack_conv2d(attrs, inputs, tinfos):
+def alter_conv2d_layout(attrs, inputs, tinfos):
     copy_inputs = [inputs[i] for i in range(len(inputs))]
 
     data = tinfos[0]
