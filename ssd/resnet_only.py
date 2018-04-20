@@ -12,7 +12,7 @@ from mxnet.gluon.model_zoo.vision import get_model
 from schedule_pack.avx512_conv_fwd import *
 
 Batch = namedtuple('Batch', ['data'])
-num_pass = 200
+num_pass = 1000
 def end2end_benchmark(model, target, batch_size):
     num_classes = 20
     image_shape = (3, 512, 512)

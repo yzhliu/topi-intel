@@ -148,7 +148,7 @@ def _get_schedule_conv(wkl):
 
 @reg.register_alter_op_layout("conv2d")
 def alter_conv2d_layout(attrs, inputs, tinfos):
-    copy_inputs = [inputs[i] for i in range(len(inputs))]
+    copy_inputs = [s for s in inputs]
 
     data = tinfos[0]
     kernel = tinfos[1]
@@ -173,7 +173,7 @@ def alter_conv2d_layout(attrs, inputs, tinfos):
         # (oc, ic, h, w) -> (OC, IC, h, w, ic, oc)
         new_attrs['kernel_layout'] = 'OIHW%di%do' % (ic_bn, oc_bn)
 
-    return sym.conv2d_nChwc(*copy_inputs, **new_attrs)
+    return sym.contrib.conv2d_nChwc(*copy_inputs, **new_attrs)
 
 
 @conv2d_nChwc.register("cpu", override=True)
@@ -196,7 +196,7 @@ def _declaration_conv(data, kernel, num_filter, kernel_size, stride, padding, ou
 
 
 @generic.schedule_conv2d_nChwc.register(["cpu"], override=True)
-def schedule_conv2d_nChwc(attrs, num_filter, kernel_size, outs):
+def schedule_conv2d_nChwc(num_filter, kernel_size, stride, padding, outs):
     """Create schedule for tensors"""
     s = tvm.create_schedule([x.op for x in outs])
 
@@ -237,9 +237,6 @@ def schedule_conv2d_nChwc(attrs, num_filter, kernel_size, outs):
             oc = num_filter
             kh, kw = kernel_size
             original_kernel = tvm.placeholder((oc, ic, kh, kw), dtype=output.dtype)
-
-            stride = attrs.get_int_tuple("strides")
-            padding = attrs.get_int_tuple("padding")
 
             wkl = _get_workload(original_data, original_kernel, stride, padding, output.dtype)
             sch = _get_schedule(wkl)

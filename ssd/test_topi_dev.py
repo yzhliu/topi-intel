@@ -10,7 +10,7 @@ from symbol.symbol_factory import get_symbol
 from schedule_pack.avx512_conv_fwd import *
 
 Batch = namedtuple('Batch', ['data'])
-num_pass = 1000
+num_pass = 200
 def end2end_benchmark(body_network, target, batch_size):
     image_shape = (3, 512, 512)
     data_shape = (batch_size,) + image_shape
