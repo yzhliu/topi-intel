@@ -9,7 +9,7 @@ from mxnet.gluon.model_zoo.vision import get_model
 from schedule_pack.avx512_conv_fwd import *
 # from schedule_kernel_pack_only.avx512_conv_fwd import *
 
-num_pass = 2000
+num_pass = 1000
 def end2end_benchmark(model, target, batch_size):
     num_classes = 1000
     image_shape = (3, 224, 224)
@@ -60,16 +60,20 @@ def end2end_benchmark(model, target, batch_size):
 
 
 if __name__ == "__main__":
+    import sys
     # KMP_AFFINITY=granularity=fine,compact,1,0 TVM_NUM_THREADS=16 OMP_NUM_THREADS=16 python test_topi_dev.py
     batch_size = 1
     # target = "llvm"
     # target = "llvm -mcpu=core-avx2"
     target = 'llvm -mcpu=skylake-avx512'
-    # tm, mm = end2end_benchmark('mobilenet1.0', target, batch_size)
-    tm, mm = end2end_benchmark('resnet18_v1', target, batch_size)
-    # tm, mm = end2end_benchmark('resnet18_v2', target, batch_size)
-    # tm, mm = end2end_benchmark('resnet34_v2', target, batch_size)
-    # tm, mm = end2end_benchmark('resnet50_v1', target, batch_size)
-    # tm, mm = end2end_benchmark('resnet101_v1', target, batch_size)
-    # tm, mm = end2end_benchmark('resnet152_v1', target, batch_size)
+    if len(sys.argv) == 2:
+        tm, mm = end2end_benchmark(sys.argv[1], target, batch_size)
+    else:
+        # tm, mm = end2end_benchmark('mobilenet1.0', target, batch_size)
+        tm, mm = end2end_benchmark('resnet18_v1', target, batch_size)
+        # tm, mm = end2end_benchmark('resnet18_v2', target, batch_size)
+        # tm, mm = end2end_benchmark('resnet34_v2', target, batch_size)
+        # tm, mm = end2end_benchmark('resnet50_v1', target, batch_size)
+        # tm, mm = end2end_benchmark('resnet101_v1', target, batch_size)
+        # tm, mm = end2end_benchmark('resnet152_v1', target, batch_size)
     print(tm, mm)

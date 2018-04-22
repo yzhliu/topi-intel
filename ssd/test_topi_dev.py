@@ -10,7 +10,7 @@ from symbol.symbol_factory import get_symbol
 from schedule_pack.avx512_conv_fwd import *
 
 Batch = namedtuple('Batch', ['data'])
-num_pass = 200
+num_pass = 500
 def end2end_benchmark(body_network, target, batch_size):
     image_shape = (3, 512, 512)
     data_shape = (batch_size,) + image_shape
@@ -50,13 +50,18 @@ def end2end_benchmark(body_network, target, batch_size):
 
     input_data = tvm.nd.array(data_array, ctx=ctx)
     module.set_input('data', input_data)
-    times = []
-    for i in range(num_pass):
-        s = time.time()
+
+    # warm up
+    for i in range(100):
         module.run()
-        tvm_time = time.time() - s
-        times.append(tvm_time)
-    print("TVM %s inference time for batch size of %d: %f" % (body_network, batch_size, np.mean(times) * 1000))
+
+    times = []
+    s = time.time()
+    for i in range(num_pass):
+        module.run()
+    tvm_time = time.time() - s
+    # times.append(tvm_time)
+    print("TVM %s inference time for batch size of %d: %f" % (body_network, batch_size, tvm_time * 1000.0 / num_pass))
 
     for i in range(len(mod.get_outputs())):
         print('Check %dth output ...' % i)

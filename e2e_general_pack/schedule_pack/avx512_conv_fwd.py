@@ -12,7 +12,7 @@ from nnvm.top import registry as reg
 import tvm
 from topi.nn.conv2d import conv2d, _get_schedule
 from topi.util import get_const_tuple, get_const_int
-from topi.nn.conv2d import conv2d_nChwc
+from topi.nn.conv2d import conv2d_NCHWc
 from topi.nn.conv2d import _WORKLOADS, Workload
 from topi.nn.conv2d import _get_workload
 from topi import generic
@@ -127,7 +127,7 @@ def _get_schedule_conv(wkl):
 
 @reg.register_alter_op_layout("conv2d")
 def alter_conv2d_layout(attrs, inputs, tinfos):
-    copy_inputs = [inputs[i] for i in range(len(inputs))]
+    copy_inputs = [s for s in inputs]
 
     data = tinfos[0]
     kernel = tinfos[1]
@@ -152,10 +152,10 @@ def alter_conv2d_layout(attrs, inputs, tinfos):
         # (oc, ic, h, w) -> (OC, IC, h, w, ic, oc)
         new_attrs['kernel_layout'] = 'OIHW%di%do' % (ic_bn, oc_bn)
 
-    return sym.contrib.conv2d_nChwc(*copy_inputs, **new_attrs)
+    return sym.contrib.conv2d_NCHWc(*copy_inputs, **new_attrs)
 
 
-@conv2d_nChwc.register("cpu", override=True)
+@conv2d_NCHWc.register("cpu", override=True)
 def _declaration_conv(data, kernel, num_filter, kernel_size, stride, padding, out_dtype):
     assert data.shape[0].value == 1, "only support batch size=1 convolution on avx"
     n, ic_chunk, h, w, ic_block = [x.value for x in data.shape]
@@ -168,8 +168,8 @@ def _declaration_conv(data, kernel, num_filter, kernel_size, stride, padding, ou
     return _SCH_TO_DECL_FUNC[type(sch)](data, kernel, stride, padding, out_dtype)
 
 
-@generic.schedule_conv2d_nChwc.register(["cpu"], override=True)
-def schedule_conv2d_nChwc(num_filter, kernel_size, stride, padding, outs):
+@generic.schedule_conv2d_NCHWc.register(["cpu"], override=True)
+def schedule_conv2d_NCHWc(num_filter, kernel_size, stride, padding, outs):
     """Create schedule for tensors"""
     s = tvm.create_schedule([x.op for x in outs])
 

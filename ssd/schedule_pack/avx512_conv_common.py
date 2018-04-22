@@ -63,6 +63,7 @@ def _declaration_conv(wkl, data, kernel):
                                    lambda n, C, h, w, c:
                                    data_pad[n, (C * sch.ic_bn + c), h, w],
                                    name='data_vec', tag="conv2d_data_pack")
+            # data_pad = data_vec
     else:
         data_vec = data_pad
 

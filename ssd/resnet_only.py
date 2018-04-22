@@ -12,7 +12,7 @@ from mxnet.gluon.model_zoo.vision import get_model
 from schedule_pack.avx512_conv_fwd import *
 
 Batch = namedtuple('Batch', ['data'])
-num_pass = 1000
+num_pass = 200
 def end2end_benchmark(model, target, batch_size):
     num_classes = 20
     image_shape = (3, 512, 512)
@@ -29,7 +29,7 @@ def end2end_benchmark(model, target, batch_size):
     # print(len(mod.get_params()))
     times = []
     mx_in_data = mx.nd.array(data_array)
-    for i in range(num_pass):
+    for i in range(20):
         s = time.time()
         mod.forward(Batch(data=[mx_in_data]), is_train=False)
         mxnet_out = mod.get_outputs()[0]
