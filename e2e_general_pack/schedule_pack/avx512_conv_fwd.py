@@ -165,7 +165,7 @@ def _declaration_conv(data, kernel, num_filter, kernel_size, stride, padding, ou
     wkl = _get_workload(tvm.placeholder((n, ic, h, w), dtype=out_dtype),
                         tvm.placeholder((oc, ic, kh, kw), dtype=out_dtype), stride, padding, out_dtype)
     sch = _get_schedule(wkl)
-    return _SCH_TO_DECL_FUNC[type(sch)](data, kernel, stride, padding, out_dtype)
+    return _SCH_TO_DECL_FUNC[type(sch)](wkl, data, kernel)
 
 
 @generic.schedule_conv2d_NCHWc.register(["cpu"], override=True)
@@ -209,7 +209,7 @@ def schedule_conv2d_NCHWc(num_filter, kernel_size, stride, padding, outs):
 
             wkl = _get_workload(original_data, original_kernel, stride, padding, output.dtype)
             sch = _get_schedule(wkl)
-            _SCH_TO_SCH_FUNC[type(sch)](s, data, data_pad, data_vec,
+            _SCH_TO_SCH_FUNC[type(sch)](s, wkl, data, data_pad, data_vec,
                                         kernel, conv_out, output, outs[0])
 
 
