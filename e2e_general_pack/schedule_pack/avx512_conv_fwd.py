@@ -11,12 +11,10 @@ from nnvm.top import registry as reg
 
 import tvm
 from topi.nn.conv2d import conv2d, _get_schedule
-from topi.util import get_const_tuple, get_const_int
 from topi.nn.conv2d import conv2d_NCHWc
 from topi.nn.conv2d import _WORKLOADS, Workload
 from topi.nn.conv2d import _get_workload
 from topi import generic
-from topi.nn.util import infer_pad, infer_stride
 from topi import tag
 
 fp32_vec_len = 16
@@ -78,7 +76,7 @@ _SCH_TO_SCH_FUNC = {
 @_get_schedule.register("cpu", override=True)
 def _get_schedule_conv(wkl):
     workloads = [
-        # workloads of resnet18_v1 on imagenet 12 0-11
+        # workloads of resnet18_v1 on imagenet
         Workload('float32', 'float32', 224, 224, 3, 64, 7, 7, 3, 3, 2, 2),
         Workload('float32', 'float32', 56, 56, 64, 64, 3, 3, 1, 1, 1, 1),
         Workload('float32', 'float32', 56, 56, 64, 64, 1, 1, 0, 0, 1, 1),
@@ -92,7 +90,7 @@ def _get_schedule_conv(wkl):
         Workload('float32', 'float32', 14, 14, 256, 512, 1, 1, 0, 0, 2, 2),
         Workload('float32', 'float32', 7, 7, 512, 512, 3, 3, 1, 1, 1, 1),
         # workloads of resnet34_v1 on imagenet, no extra workload required
-        # workloads of resnet50_v1 on imagenet 14 12-25
+        # workloads of resnet50_v1 on imagenet
         Workload('float32', 'float32', 56, 56, 64, 256, 1, 1, 0, 0, 1, 1),
         Workload('float32', 'float32', 56, 56, 256, 64, 1, 1, 0, 0, 1, 1),
         Workload('float32', 'float32', 56, 56, 256, 128, 1, 1, 0, 0, 2, 2),
@@ -111,7 +109,7 @@ def _get_schedule_conv(wkl):
         # workloads of resnet152_v1 on imagenet, no extra workload required
         # workloads of resnet18_v2 on imagenet, no extra workload required
         # workloads of resnet34_v2 on imagenet, no extra workload required
-        # workloads of resnet50_v2 on imagenet 3 26-28
+        # workloads of resnet50_v2 on imagenet
         Workload('float32', 'float32', 56, 56, 128, 128, 3, 3, 1, 1, 2, 2),
         Workload('float32', 'float32', 28, 28, 256, 256, 3, 3, 1, 1, 2, 2),
         Workload('float32', 'float32', 14, 14, 512, 512, 3, 3, 1, 1, 2, 2),
@@ -183,15 +181,13 @@ def schedule_conv2d_NCHWc(num_filter, kernel_size, stride, padding, outs):
                 if tensor.op.input_tensors:
                     traverse(tensor.op)
 
-        if 'conv2d_nChwc' in op.tag:
+        if 'conv2d_NCHWc' in op.tag:
             output = op.output(0)
-            # conv_out = op.input_tensors[0]
             conv_out = output
             kernel = conv_out.op.input_tensors[1]
-            # kernel = kernel_vec.op.input_tensors[0]
             data_vec = conv_out.op.input_tensors[0]
             data = data_vec.op.input_tensors[0] \
-                if isinstance(data_vec.op, tvm.tensor.ComputeOp) and len(data_vec.op.input_tensors) > 0 and "pad" not in data_vec.op.tag \
+                if isinstance(data_vec.op, tvm.tensor.ComputeOp) and "pad" not in data_vec.op.tag \
                 else data_vec
             data_pad = None
 
@@ -203,15 +199,13 @@ def schedule_conv2d_NCHWc(num_filter, kernel_size, stride, padding, outs):
             ic = ic_chunk * ic_block
             original_data = tvm.placeholder((n, ic, h, w), dtype=output.dtype)
 
-            oc = num_filter
             kh, kw = kernel_size
-            original_kernel = tvm.placeholder((oc, ic, kh, kw), dtype=output.dtype)
+            original_kernel = tvm.placeholder((num_filter, ic, kh, kw), dtype=output.dtype)
 
             wkl = _get_workload(original_data, original_kernel, stride, padding, output.dtype)
             sch = _get_schedule(wkl)
             _SCH_TO_SCH_FUNC[type(sch)](s, wkl, data, data_pad, data_vec,
                                         kernel, conv_out, output, outs[0])
-
 
     traverse(outs[0].op)
     return s

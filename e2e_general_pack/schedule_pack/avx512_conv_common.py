@@ -1,12 +1,9 @@
 from __future__ import absolute_import as _abs
-import numpy as np
 import tvm
-import topi
 from topi.util import get_const_tuple, get_const_int
 from collections import namedtuple
 
 from topi.nn.conv2d import _get_schedule
-from topi.nn.conv2d import _get_workload
 from topi.nn.pad import pad
 
 AVX512ConvCommonFwd = namedtuple('AVX512ConvCommonFwd', ['ic_bn', 'oc_bn', 'reg_n', 'unroll_kw'])
@@ -48,7 +45,7 @@ def _declaration_conv(wkl, data, kernel):
                        tvm.sum(data_vec[n, ic//sch.ic_bn, oh*HSTR+kh, ow*WSTR+kw, ic%sch.ic_bn].astype(out_dtype) *
                                kernel_vec[oc_chunk, ic//sch.ic_bn, kh, kw, ic%sch.ic_bn, oc_block],
                                axis=[ic, kh, kw]),
-                       name='conv2d_nChwc', tag="conv2d_nChwc")
+                       name='conv2d_NCHWc', tag="conv2d_NCHWc")
 
     return conv
 
@@ -59,13 +56,9 @@ def _schedule_conv(s, wkl, data, data_pad, data_vec, kernel, conv_out, output, l
     HPAD, WPAD = wkl.hpad, wkl.wpad
     DOPAD = (HPAD != 0 and WPAD != 0)
 
-    # A, W = data, kernel_vec
     A0, A1 = data_pad, data_vec
-
     # schedule data
-    if DOPAD and "conv2d_data_pack" in s[A1].op.tag:
-        s[A0].compute_inline()
-    if isinstance(s[A1].op, tvm.tensor.ComputeOp): #and "conv2d_data_pack" in s[A1].op.tag:
+    if isinstance(s[A1].op, tvm.tensor.ComputeOp):
         batch, ic_chunk, ih, iw, ic_block = s[A1].op.axis
         parallel_axis = s[A1].fuse(ic_chunk, ih)
         s[A1].parallel(parallel_axis)
