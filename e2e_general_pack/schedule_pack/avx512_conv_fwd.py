@@ -182,30 +182,27 @@ def schedule_conv2d_NCHWc(num_filter, kernel_size, stride, padding, outs):
                     traverse(tensor.op)
 
         if 'conv2d_NCHWc' in op.tag:
-            output = op.output(0)
-            conv_out = output
+            conv_out = op.output(0)
             kernel = conv_out.op.input_tensors[1]
             data_vec = conv_out.op.input_tensors[0]
             data = data_vec.op.input_tensors[0] \
                 if isinstance(data_vec.op, tvm.tensor.ComputeOp) and "pad" not in data_vec.op.tag \
                 else data_vec
-            data_pad = None
-
             if isinstance(data.op, tvm.tensor.ComputeOp) and "pad" in data.op.tag:
                 data_pad = data
                 data = data_pad.op.input_tensors[0]
 
             n, ic_chunk, h, w, ic_block = [x.value for x in data.shape]
             ic = ic_chunk * ic_block
-            original_data = tvm.placeholder((n, ic, h, w), dtype=output.dtype)
+            original_data = tvm.placeholder((n, ic, h, w), dtype=conv_out.dtype)
 
             kh, kw = kernel_size
-            original_kernel = tvm.placeholder((num_filter, ic, kh, kw), dtype=output.dtype)
+            original_kernel = tvm.placeholder((num_filter, ic, kh, kw), dtype=conv_out.dtype)
 
-            wkl = _get_workload(original_data, original_kernel, stride, padding, output.dtype)
+            wkl = _get_workload(original_data, original_kernel, stride, padding, conv_out.dtype)
             sch = _get_schedule(wkl)
-            _SCH_TO_SCH_FUNC[type(sch)](s, wkl, data, data_pad, data_vec,
-                                        kernel, conv_out, output, outs[0])
+            _SCH_TO_SCH_FUNC[type(sch)](s, wkl, data_vec,
+                                        kernel, conv_out, outs[0])
 
     traverse(outs[0].op)
     return s

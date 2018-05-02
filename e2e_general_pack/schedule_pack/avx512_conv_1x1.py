@@ -44,20 +44,20 @@ def _declaration_conv(wkl, data, kernel):
     return conv
 
 
-def _schedule_conv(s, wkl, data, data_pad, data_vec, kernel, conv_out, output, last):
+def _schedule_conv(s, wkl, data, kernel, conv_out, last):
     sch = _get_schedule(wkl)
 
     HPAD, WPAD = wkl.hpad, wkl.wpad
     DOPAD = (HPAD != 0 and WPAD != 0)
 
-    A0, A1 = data_pad, data_vec
+    A = data
     # schedule data
-    if isinstance(s[A1].op, tvm.tensor.ComputeOp):
-        batch, ic_chunk, ih, iw, ic_block = s[A1].op.axis
-        parallel_axis = s[A1].fuse(ic_chunk, ih)
-        s[A1].parallel(parallel_axis)
+    if isinstance(s[A].op, tvm.tensor.ComputeOp):
+        batch, ic_chunk, ih, iw, ic_block = s[A].op.axis
+        parallel_axis = s[A].fuse(ic_chunk, ih)
+        s[A].parallel(parallel_axis)
 
-    C, O0, O = conv_out, output, last
+    C, O = conv_out, last
     CC = s.cache_write(C, 'global')
 
     batch, oc_chunk, oh, ow, oc_block = s[C].op.axis
@@ -85,9 +85,6 @@ def _schedule_conv(s, wkl, data, data_pad, data_vec, kernel, conv_out, output, l
 
     s[CC].unroll(ow_inner)
     s[CC].unroll(oh_inner)
-
-    if O0 != O:
-        s[O0].compute_inline()
 
     if C != O:
         batch, oc_chunk, oh, ow, oc_block = s[O].op.axis
