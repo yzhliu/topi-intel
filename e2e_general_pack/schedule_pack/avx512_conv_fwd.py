@@ -123,7 +123,7 @@ def _get_schedule_conv(wkl):
     return sch
 
 
-@reg.register_alter_op_layout("conv2d")
+@reg.register_alter_op_layout("conv2d", level=100)
 def alter_conv2d_layout(attrs, inputs, tinfos):
     copy_inputs = [s for s in inputs]
 
@@ -134,7 +134,7 @@ def alter_conv2d_layout(attrs, inputs, tinfos):
     padding = ast.literal_eval(attrs['padding'])
     stride = ast.literal_eval(attrs['strides'])
 
-    wkl = _get_workload(data, kernel, stride, padding, 'float32')
+    wkl = _get_workload(data, kernel, stride, padding, data.dtype)
     sch = _get_schedule_conv(wkl)
     is_kernel_1x1 = isinstance(sch, AVX512Conv1x1Fwd)
     ic_bn, oc_bn = sch.ic_bn, sch.oc_bn

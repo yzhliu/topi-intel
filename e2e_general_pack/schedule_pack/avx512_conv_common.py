@@ -15,12 +15,9 @@ def _declaration_conv(wkl, data, kernel):
     HPAD, WPAD = wkl.hpad, wkl.wpad
     HSTR, WSTR = wkl.hstride, wkl.wstride
 
-    batch_size, in_channel_chunk, in_height, in_width, in_channel_block = get_const_tuple(data.shape)
-    num_filter, _, kernel_height, kernel_width, _, co = get_const_tuple(kernel.shape)
-    num_filter *= co
-
-    out_height = (in_height + 2 * HPAD - kernel_height) // HSTR + 1
-    out_width = (in_width + 2 * WPAD - kernel_width) // WSTR + 1
+    batch_size = data.shape[0]
+    out_height = (wkl.height + 2 * HPAD - wkl.hkernel) // HSTR + 1
+    out_width = (wkl.width + 2 * WPAD - wkl.wkernel) // WSTR + 1
 
     # pack data
     DOPAD = (HPAD != 0 and WPAD != 0)
@@ -29,21 +26,16 @@ def _declaration_conv(wkl, data, kernel):
     else:
         data_pad = data
 
-    in_channel = in_channel_block * in_channel_chunk
-    data_vec = data_pad
-
-    kernel_vec = kernel
-
     # convolution
-    oshape = (batch_size, num_filter//sch.oc_bn, out_height, out_width, sch.oc_bn)
+    oshape = (batch_size, wkl.out_filter//sch.oc_bn, out_height, out_width, sch.oc_bn)
 
-    ic = tvm.reduce_axis((0, in_channel), name='ic')
-    kh = tvm.reduce_axis((0, kernel_height), name='kh')
-    kw = tvm.reduce_axis((0, kernel_width), name='kw')
+    ic = tvm.reduce_axis((0, wkl.in_filter), name='ic')
+    kh = tvm.reduce_axis((0, wkl.hkernel), name='kh')
+    kw = tvm.reduce_axis((0, wkl.wkernel), name='kw')
 
     conv = tvm.compute(oshape, lambda n, oc_chunk, oh, ow, oc_block:
-                       tvm.sum(data_vec[n, ic//sch.ic_bn, oh*HSTR+kh, ow*WSTR+kw, ic%sch.ic_bn].astype(out_dtype) *
-                               kernel_vec[oc_chunk, ic//sch.ic_bn, kh, kw, ic%sch.ic_bn, oc_block],
+                       tvm.sum(data_pad[n, ic//sch.ic_bn, oh*HSTR+kh, ow*WSTR+kw, ic%sch.ic_bn].astype(out_dtype) *
+                               kernel[oc_chunk, ic//sch.ic_bn, kh, kw, ic%sch.ic_bn, oc_block],
                                axis=[ic, kh, kw]),
                        name='conv2d_NCHWc', tag="conv2d_NCHWc")
 
@@ -53,9 +45,6 @@ def _declaration_conv(wkl, data, kernel):
 def _schedule_conv(s, wkl, data, kernel, conv_out, last):
     sch = _get_schedule(wkl)
 
-    HPAD, WPAD = wkl.hpad, wkl.wpad
-    DOPAD = (HPAD != 0 and WPAD != 0)
-
     A = data
     # schedule data
     if isinstance(s[A].op, tvm.tensor.ComputeOp):
@@ -63,7 +52,7 @@ def _schedule_conv(s, wkl, data, kernel, conv_out, last):
         parallel_axis = s[A].fuse(ic_chunk, ih)
         s[A].parallel(parallel_axis)
 
-    # schedule conv
+    # schedule 5-D conv
     C, O = conv_out, last
     CC = s.cache_write(C, 'global')
 

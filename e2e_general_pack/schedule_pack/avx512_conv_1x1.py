@@ -10,34 +10,26 @@ from collections import namedtuple
 AVX512Conv1x1Fwd = namedtuple('AVX512Conv1x1Fwd', ['ic_bn', 'oc_bn', 'oh_factor', 'ow_factor'])
 
 def _declaration_conv(wkl, data, kernel):
-    assert data.shape[0].value == 1, "only support batch size=1 convolution on rasp"
     sch = _get_schedule(wkl)
 
     out_dtype = wkl.out_dtype
     HPAD, WPAD = wkl.hpad, wkl.wpad
     HSTR, WSTR = wkl.hstride, wkl.wstride
 
-    batch_size, in_channel_chunk, in_height, in_width, in_channel_block = get_const_tuple(data.shape)
-    num_filter, _, _, co, kernel_height, kernel_width = get_const_tuple(kernel.shape)
-    num_filter *= co
+    batch_size = data.shape[0]
+    out_height = (wkl.height + 2 * HPAD - wkl.hkernel) // HSTR + 1
+    out_width = (wkl.width + 2 * WPAD - wkl.wkernel) // WSTR + 1
 
-    out_height = (in_height + 2 * HPAD - kernel_height) // HSTR + 1
-    out_width = (in_width + 2 * WPAD - kernel_width) // WSTR + 1
-
-    # input: c, h, w
     DOPAD = (HPAD != 0 and WPAD != 0)
     if DOPAD:
         data_pad = pad(data, (0, 0, HPAD, WPAD, 0), name="data_pad")
     else:
         data_pad = data
 
-    in_channel = in_channel_block * in_channel_chunk
-    data_vec = data_pad
-
-    oshape = (batch_size, num_filter // sch.oc_bn, out_height, out_width, sch.oc_bn)
-    ic = tvm.reduce_axis((0, in_channel), name='ic')
+    oshape = (batch_size, wkl.out_filter//sch.oc_bn, out_height, out_width, sch.oc_bn)
+    ic = tvm.reduce_axis((0, wkl.in_filter), name='ic')
     conv = tvm.compute(oshape, lambda n, oc_chunk, oh, ow, oc_block:
-        tvm.sum(data_vec[n, ic // sch.ic_bn, oh * HSTR, ow * WSTR, ic % sch.ic_bn].astype(out_dtype) *
+        tvm.sum(data_pad[n, ic // sch.ic_bn, oh * HSTR, ow * WSTR, ic % sch.ic_bn].astype(out_dtype) *
                 kernel[oc_chunk, ic // sch.ic_bn, ic % sch.ic_bn, oc_block, 0, 0],
                 axis=[ic]), name='conv2d_NCHWc', tag='conv2d_NCHWc')
 
@@ -47,11 +39,8 @@ def _declaration_conv(wkl, data, kernel):
 def _schedule_conv(s, wkl, data, kernel, conv_out, last):
     sch = _get_schedule(wkl)
 
-    HPAD, WPAD = wkl.hpad, wkl.wpad
-    DOPAD = (HPAD != 0 and WPAD != 0)
-
-    A = data
     # schedule data
+    A = data
     if isinstance(s[A].op, tvm.tensor.ComputeOp):
         batch, ic_chunk, ih, iw, ic_block = s[A].op.axis
         parallel_axis = s[A].fuse(ic_chunk, ih)
@@ -95,7 +84,6 @@ def _schedule_conv(s, wkl, data, kernel, conv_out, last):
         parallel_axis = s[O].fuse(oc_chunk, oh_outer)
         s[C].compute_at(s[O], parallel_axis)
         s[O].vectorize(oc_block)
-
         s[O].parallel(parallel_axis)
 
     return s
