@@ -9,11 +9,14 @@ from collections import namedtuple
 from tvm.contrib import graph_runtime
 from mxnet.gluon.model_zoo.vision import get_model
 
+import sys
+sys.setrecursionlimit(10000)
+
 Batch = namedtuple('Batch', ['data'])
-num_pass = 2000
+num_pass = 1000
 def end2end_benchmark(model, target, batch_size):
     num_classes = 1000
-    image_shape = (3, 224, 224)
+    image_shape = (3, 256, 256)
     data_shape = (batch_size,) + image_shape
     out_shape = (batch_size, num_classes)
     data_array = np.random.uniform(0, 255, size=data_shape).astype("float32")
@@ -30,7 +33,7 @@ def end2end_benchmark(model, target, batch_size):
     mod.set_params(arg_params, aux_params, allow_missing=True)
 
     times = []
-    for i in range(num_pass):
+    for i in range(1):
         s = time.time()
         mod.forward(Batch([mx_data]), is_train=False)
         for output in mod.get_outputs():
@@ -43,7 +46,7 @@ def end2end_benchmark(model, target, batch_size):
     net, params = nnvm.frontend.from_mxnet(block)
 
     ctx = tvm.cpu()
-    opt_level = 0
+    opt_level = 3
     with nnvm.compiler.build_config(opt_level=opt_level):
         graph, lib, params = nnvm.compiler.build(net, target, shape={"data": data_shape}, params=params)
     with open('graph.json', 'w') as fn:
@@ -75,10 +78,17 @@ if __name__ == "__main__":
     batch_size = 1
     # target = "llvm"
     # target = "llvm -mcpu=core-avx2"
-    target = 'llvm -mcpu=skylake-avx512' # export TVM_NUM_THREADS=4 on c5xlarge
-    # tm, mm = end2end_benchmark('mobilenet1.0', target, batch_size)
-    # tm, mm = end2end_benchmark('resnet18_v1', target, batch_size)
-    # tm, mm = end2end_benchmark('resnet34_v1', target, batch_size)
-    # tm, mm = end2end_benchmark('resnet50_v1', target, batch_size)
-    tm, mm = end2end_benchmark('resnet101_v1', target, batch_size)
-    print(tm, mm)
+    target = 'llvm -mcpu=skylake-avx512'
+
+    if len(sys.argv) == 2:
+        end2end_benchmark(sys.argv[1], target, batch_size)
+    else:
+        # tm, mm = end2end_benchmark('mobilenet0.25', target, batch_size)
+        # tm, mm = end2end_benchmark('mobilenet1.0', target, batch_size)
+        # tm, mm = end2end_benchmark('resnet18_v1', target, batch_size)
+        # tm, mm = end2end_benchmark('resnet34_v1', target, batch_size)
+        # tm, mm = end2end_benchmark('resnet50_v1', target, batch_size)
+        # tm, mm = end2end_benchmark('resnet50_v2', target, batch_size)
+        # tm, mm = end2end_benchmark('resnet101_v1', target, batch_size)
+        # tm, mm = end2end_benchmark('resnet152_v1', target, batch_size)
+        end2end_benchmark('vgg11_bn', target, batch_size)
